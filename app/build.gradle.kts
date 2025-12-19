@@ -126,14 +126,6 @@ dependencies {
     // DataStore for preferences
     implementation("androidx.datastore:datastore-preferences:1.0.0")
     
-    // Speech Recognition
-    implementation("com.google.android.gms:play-services-mlkit-speech-recognition:17.0.0")
-    
-    // Waveform visualization
-    implementation("com.github.nickarcher:waveformview:0.0.1") {
-        exclude(group = "com.android.support")
-    }
-    
     // Testing
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
