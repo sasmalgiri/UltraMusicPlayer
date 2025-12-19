@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">UltraMusic Player</string>
+    
+    <!-- Navigation -->
+    <string name="nav_library">Library</string>
+    <string name="nav_now_playing">Now Playing</string>
+    <string name="nav_presets">Presets</string>
+    <string name="nav_settings">Settings</string>
+    
+    <!-- Playback -->
+    <string name="play">Play</string>
+    <string name="pause">Pause</string>
+    <string name="stop">Stop</string>
+    <string name="next">Next</string>
+    <string name="previous">Previous</string>
+    <string name="shuffle">Shuffle</string>
+    <string name="repeat">Repeat</string>
+    
+    <!-- Speed Control -->
+    <string name="speed">Speed</string>
+    <string name="speed_format">%.2fx</string>
+    <string name="speed_extended_range">Extended Range (0.05x - 10.0x)</string>
+    <string name="reset">Reset</string>
+    
+    <!-- Pitch Control -->
+    <string name="pitch">Pitch</string>
+    <string name="pitch_semitones">Semitones</string>
+    <string name="pitch_cents">Fine Tune (cents)</string>
+    <string name="pitch_extended_range">Extended Range (-36 to +36 semitones)</string>
+    <string name="preserve_formants">Preserve Formants</string>
+    <string name="preserve_formants_desc">Keep natural voice character</string>
+    
+    <!-- Loop -->
+    <string name="loop">A-B Loop</string>
+    <string name="loop_enabled">Loop enabled</string>
+    <string name="loop_disabled">Loop disabled</string>
+    <string name="clear_loop">Clear Loop</string>
+    <string name="set_loop_point">Set loop point</string>
+    
+    <!-- Library -->
+    <string name="search_hint">Search songs, artists, albums…</string>
+    <string name="voice_search">Voice search</string>
+    <string name="listening">Listening…</string>
+    <string name="no_music_found">No music found</string>
+    <string name="scan_for_music">Scan for music</string>
+    <string name="songs_count">%d songs</string>
+    
+    <!-- Storage -->
+    <string name="all">All</string>
+    <string name="internal_storage">Internal Storage</string>
+    <string name="sd_card">SD Card</string>
+    
+    <!-- Presets -->
+    <string name="quick_presets">Quick Presets</string>
+    <string name="nightcore">Nightcore</string>
+    <string name="slowed">Slowed</string>
+    <string name="vaporwave">Vaporwave</string>
+    <string name="chipmunk">Chipmunk</string>
+    <string name="deep_voice">Deep Voice</string>
+    
+    <!-- Settings -->
+    <string name="audio_quality">Audio Quality</string>
+    <string name="processing_quality">Processing Quality</string>
+    <string name="processing_algorithm">Processing Algorithm</string>
+    
+    <!-- Quality Modes -->
+    <string name="quality_ultra_high">Ultra High</string>
+    <string name="quality_high">High</string>
+    <string name="quality_balanced">Balanced</string>
+    <string name="quality_performance">Performance</string>
+    <string name="quality_voice">Voice</string>
+    <string name="quality_instrument">Instrument</string>
+    <string name="quality_percussion">Percussion</string>
+    
+    <!-- Algorithms -->
+    <string name="algo_phase_vocoder">Phase Vocoder</string>
+    <string name="algo_wsola">WSOLA</string>
+    <string name="algo_hybrid">Hybrid</string>
+    <string name="algo_elastique">Elastique Style</string>
+    
+    <!-- Notifications -->
+    <string name="playback_channel_name">Playback</string>
+    <string name="playback_channel_desc">Music playback notifications</string>
+    
+    <!-- Permissions -->
+    <string name="permission_storage_title">Storage Permission</string>
+    <string name="permission_storage_message">UltraMusic needs access to your storage to play music files.</string>
+    <string name="permission_microphone_title">Microphone Permission</string>
+    <string name="permission_microphone_message">UltraMusic needs microphone access for voice search.</string>
+    
+    <!-- About -->
+    <string name="about">About</string>
+    <string name="version">Version %s</string>
+    <string name="app_description">Professional music player with industry-leading audio manipulation</string>
+</resources>
