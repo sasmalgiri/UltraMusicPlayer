@@ -1,0 +1,450 @@
+package com.ultramusic.player.audio
+
+import android.util.Log
+import androidx.media3.common.C
+import androidx.media3.common.audio.AudioProcessor
+import androidx.media3.common.audio.AudioProcessor.AudioFormat
+import androidx.media3.common.util.UnstableApi
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
+import javax.inject.Inject
+import javax.inject.Singleton
+
+/**
+ * NATIVE BATTLE ENGINE
+ * 
+ * Kotlin wrapper for the C++ Battle Audio Engine.
+ * Provides professional-grade audio processing:
+ * 
+ * - Speed: 0.05x to 10.0x (tempo without pitch change)
+ * - Pitch: -36 to +36 semitones (pitch without tempo change)
+ * - Formant preservation (natural voice at any pitch)
+ * - Battle limiter (no clipping at extreme volumes)
+ * - Punch compressor (cuts through the mix)
+ * - Mega bass boost (shake the ground)
+ * 
+ * Uses SoundTouch library for time-stretching/pitch-shifting.
+ * Optimized for ARM NEON SIMD on Android devices.
+ */
+@Singleton
+class NativeBattleEngine @Inject constructor() {
+    
+    companion object {
+        private const val TAG = "NativeBattleEngine"
+        
+        // Speed limits (WAY beyond ExoPlayer's 0.25-4.0)
+        const val MIN_SPEED = 0.05f
+        const val MAX_SPEED = 10.0f
+        
+        // Pitch limits (WAY beyond standard -12 to +12)
+        const val MIN_PITCH_SEMITONES = -36f
+        const val MAX_PITCH_SEMITONES = 36f
+        
+        // Try to load native library
+        private var isNativeLoaded = false
+        
+        init {
+            try {
+                System.loadLibrary("ultramusic_audio")
+                isNativeLoaded = true
+                Log.i(TAG, "Native Battle Engine loaded successfully!")
+            } catch (e: UnsatisfiedLinkError) {
+                Log.e(TAG, "Failed to load native library: ${e.message}")
+                isNativeLoaded = false
+            }
+        }
+        
+        fun isAvailable(): Boolean = isNativeLoaded
+    }
+    
+    // Native handle
+    private var nativeHandle: Long = 0
+    private var soundTouchHandle: Long = 0
+    
+    // Current settings
+    private var sampleRate: Int = 44100
+    private var channels: Int = 2
+    
+    private var speed: Float = 1.0f
+    private var pitchSemitones: Float = 0.0f
+    private var rate: Float = 1.0f
+    private var bassBoostDb: Float = 0.0f
+    
+    private var battleModeEnabled: Boolean = false
+    private var isInitialized: Boolean = false
+    
+    // Buffers
+    private var inputBuffer = ShortArray(0)
+    private var outputBuffer = ShortArray(0)
+    
+    /**
+     * Initialize the engine
+     */
+    fun initialize(sampleRate: Int = 44100, channels: Int = 2): Boolean {
+        if (!isNativeLoaded) {
+            Log.w(TAG, "Native library not loaded, cannot initialize")
+            return false
+        }
+        
+        this.sampleRate = sampleRate
+        this.channels = channels
+        
+        try {
+            // Create native engine
+            nativeHandle = nativeCreate()
+            if (nativeHandle == 0L) {
+                Log.e(TAG, "Failed to create native engine")
+                return false
+            }
+            
+            // Configure it
+            nativeConfigure(nativeHandle, sampleRate, channels)
+            
+            // Also create direct SoundTouch for simple operations
+            soundTouchHandle = soundTouchCreate()
+            if (soundTouchHandle != 0L) {
+                soundTouchSetSampleRate(soundTouchHandle, sampleRate)
+                soundTouchSetChannels(soundTouchHandle, channels)
+            }
+            
+            // Allocate buffers (1 second at sample rate)
+            val bufferSize = sampleRate * channels * 2  // Extra space for slow speeds
+            inputBuffer = ShortArray(bufferSize)
+            outputBuffer = ShortArray(bufferSize * 4)  // 4x for extreme slow speeds
+            
+            isInitialized = true
+            Log.i(TAG, "Initialized: ${sampleRate}Hz, ${channels}ch")
+            
+            return true
+        } catch (e: Exception) {
+            Log.e(TAG, "Initialization failed", e)
+            return false
+        }
+    }
+    
+    /**
+     * Set playback speed (0.05x to 10.0x)
+     * Changes tempo WITHOUT changing pitch!
+     */
+    fun setSpeed(newSpeed: Float) {
+        speed = newSpeed.coerceIn(MIN_SPEED, MAX_SPEED)
+        
+        if (nativeHandle != 0L) {
+            nativeSetSpeed(nativeHandle, speed)
+        }
+        if (soundTouchHandle != 0L) {
+            soundTouchSetTempo(soundTouchHandle, speed)
+        }
+        
+        Log.d(TAG, "Speed: ${speed}x")
+    }
+    
+    /**
+     * Set pitch in semitones (-36 to +36)
+     * Changes pitch WITHOUT changing tempo!
+     */
+    fun setPitch(semitones: Float) {
+        pitchSemitones = semitones.coerceIn(MIN_PITCH_SEMITONES, MAX_PITCH_SEMITONES)
+        
+        if (nativeHandle != 0L) {
+            nativeSetPitch(nativeHandle, pitchSemitones)
+        }
+        if (soundTouchHandle != 0L) {
+            soundTouchSetPitchSemitones(soundTouchHandle, pitchSemitones)
+        }
+        
+        Log.d(TAG, "Pitch: ${pitchSemitones} semitones")
+    }
+    
+    /**
+     * Set rate (changes both speed AND pitch together, like vinyl)
+     */
+    fun setRate(newRate: Float) {
+        rate = newRate.coerceIn(MIN_SPEED, MAX_SPEED)
+        
+        if (nativeHandle != 0L) {
+            nativeSetRate(nativeHandle, rate)
+        }
+        if (soundTouchHandle != 0L) {
+            soundTouchSetRate(soundTouchHandle, rate)
+        }
+        
+        Log.d(TAG, "Rate: ${rate}x")
+    }
+    
+    /**
+     * Enable battle mode
+     * Activates limiter, compressor, and other battle optimizations
+     */
+    fun setBattleMode(enabled: Boolean) {
+        battleModeEnabled = enabled
+        
+        if (nativeHandle != 0L) {
+            nativeSetBattleMode(nativeHandle, enabled)
+        }
+        
+        Log.i(TAG, "Battle Mode: ${if (enabled) "ENGAGED!" else "off"}")
+    }
+    
+    /**
+     * Set bass boost amount (0 to 24 dB)
+     */
+    fun setBassBoost(db: Float) {
+        bassBoostDb = db.coerceIn(0f, 24f)
+        
+        if (nativeHandle != 0L) {
+            nativeSetBassBoost(nativeHandle, bassBoostDb)
+        }
+        
+        Log.d(TAG, "Bass Boost: ${bassBoostDb} dB")
+    }
+    
+    /**
+     * Process audio samples
+     * Input: PCM 16-bit samples
+     * Output: Processed PCM 16-bit samples
+     * 
+     * Returns: Number of output samples
+     */
+    fun process(input: ShortArray, numSamples: Int): Pair<ShortArray, Int> {
+        if (!isInitialized || nativeHandle == 0L) {
+            return Pair(input, numSamples)
+        }
+        
+        // Use full engine with battle processing
+        val outputSamples = nativeProcess(nativeHandle, input, numSamples, outputBuffer)
+        
+        return Pair(outputBuffer.copyOf(outputSamples), outputSamples)
+    }
+    
+    /**
+     * Process using SoundTouch only (simpler, for just speed/pitch)
+     */
+    fun processSoundTouchOnly(input: ShortArray, numFrames: Int): Pair<ShortArray, Int> {
+        if (soundTouchHandle == 0L) {
+            return Pair(input, numFrames * channels)
+        }
+        
+        // Put samples
+        soundTouchPutSamples(soundTouchHandle, input, numFrames)
+        
+        // Receive processed samples
+        val maxOutput = (numFrames * 4 / speed).toInt()  // Account for tempo change
+        if (outputBuffer.size < maxOutput * channels) {
+            outputBuffer = ShortArray(maxOutput * channels * 2)
+        }
+        
+        val received = soundTouchReceiveSamples(soundTouchHandle, outputBuffer, maxOutput)
+        
+        return Pair(outputBuffer.copyOf(received * channels), received * channels)
+    }
+    
+    /**
+     * Flush remaining samples
+     */
+    fun flush() {
+        if (nativeHandle != 0L) {
+            nativeFlush(nativeHandle)
+        }
+        if (soundTouchHandle != 0L) {
+            soundTouchFlush(soundTouchHandle)
+        }
+    }
+    
+    /**
+     * Clear all buffers
+     */
+    fun clear() {
+        if (nativeHandle != 0L) {
+            nativeClear(nativeHandle)
+        }
+        if (soundTouchHandle != 0L) {
+            soundTouchClear(soundTouchHandle)
+        }
+    }
+    
+    /**
+     * Release all resources
+     */
+    fun release() {
+        if (nativeHandle != 0L) {
+            nativeDestroy(nativeHandle)
+            nativeHandle = 0
+        }
+        if (soundTouchHandle != 0L) {
+            soundTouchDestroy(soundTouchHandle)
+            soundTouchHandle = 0
+        }
+        
+        isInitialized = false
+        Log.i(TAG, "Released")
+    }
+    
+    /**
+     * Get engine version
+     */
+    fun getEngineVersion(): String {
+        return if (isNativeLoaded) {
+            nativeGetVersion()
+        } else {
+            "Native library not loaded"
+        }
+    }
+    
+    // Getters
+    fun getSpeed(): Float = speed
+    fun getPitch(): Float = pitchSemitones
+    fun getRate(): Float = rate
+    fun isBattleModeEnabled(): Boolean = battleModeEnabled
+    fun isReady(): Boolean = isInitialized && nativeHandle != 0L
+    
+    // ==================== Native Methods ====================
+    
+    // Full Battle Engine
+    private external fun nativeCreate(): Long
+    private external fun nativeDestroy(handle: Long)
+    private external fun nativeConfigure(handle: Long, sampleRate: Int, channels: Int)
+    private external fun nativeSetSpeed(handle: Long, speed: Float)
+    private external fun nativeSetPitch(handle: Long, semitones: Float)
+    private external fun nativeSetRate(handle: Long, rate: Float)
+    private external fun nativeSetBattleMode(handle: Long, enabled: Boolean)
+    private external fun nativeSetBassBoost(handle: Long, amount: Float)
+    private external fun nativeProcess(handle: Long, input: ShortArray, numSamples: Int, output: ShortArray): Int
+    private external fun nativeFlush(handle: Long)
+    private external fun nativeClear(handle: Long)
+    
+    // Direct SoundTouch access
+    private external fun soundTouchCreate(): Long
+    private external fun soundTouchDestroy(handle: Long)
+    private external fun soundTouchSetSampleRate(handle: Long, sampleRate: Int)
+    private external fun soundTouchSetChannels(handle: Long, channels: Int)
+    private external fun soundTouchSetTempo(handle: Long, tempo: Float)
+    private external fun soundTouchSetPitch(handle: Long, pitch: Float)
+    private external fun soundTouchSetPitchSemitones(handle: Long, semitones: Float)
+    private external fun soundTouchSetRate(handle: Long, rate: Float)
+    private external fun soundTouchPutSamples(handle: Long, samples: ShortArray, numSamples: Int)
+    private external fun soundTouchReceiveSamples(handle: Long, output: ShortArray, maxSamples: Int): Int
+    private external fun soundTouchFlush(handle: Long)
+    private external fun soundTouchClear(handle: Long)
+    
+    private external fun nativeGetVersion(): String
+}
+
+/**
+ * Media3 AudioProcessor wrapper for NativeBattleEngine
+ */
+@UnstableApi
+class BattleAudioProcessor(
+    private val engine: NativeBattleEngine
+) : AudioProcessor {
+    
+    private var inputFormat: AudioFormat = AudioFormat.NOT_SET
+    private var outputFormat: AudioFormat = AudioFormat.NOT_SET
+    
+    private var inputBuffer: ByteBuffer = EMPTY_BUFFER
+    private var outputBuffer: ByteBuffer = EMPTY_BUFFER
+    private var inputEnded = false
+    
+    private var isActive = false
+    private var tempInputShorts = ShortArray(0)
+    private var tempOutputShorts = ShortArray(0)
+    
+    fun setSpeed(speed: Float) {
+        engine.setSpeed(speed)
+        isActive = engine.getSpeed() != 1.0f || engine.getPitch() != 0.0f
+    }
+    
+    fun setPitch(semitones: Float) {
+        engine.setPitch(semitones)
+        isActive = engine.getSpeed() != 1.0f || engine.getPitch() != 0.0f
+    }
+    
+    fun setBattleMode(enabled: Boolean) {
+        engine.setBattleMode(enabled)
+    }
+    
+    override fun configure(inputAudioFormat: AudioFormat): AudioFormat {
+        if (inputAudioFormat.encoding != C.ENCODING_PCM_16BIT) {
+            return AudioFormat.NOT_SET
+        }
+        
+        inputFormat = inputAudioFormat
+        
+        // Initialize engine with format
+        engine.initialize(inputAudioFormat.sampleRate, inputAudioFormat.channelCount)
+        
+        outputFormat = inputAudioFormat
+        return outputFormat
+    }
+    
+    override fun isActive(): Boolean = isActive && NativeBattleEngine.isAvailable()
+    
+    override fun queueInput(buffer: ByteBuffer) {
+        if (!isActive) {
+            inputBuffer = buffer
+            return
+        }
+        
+        // Convert bytes to shorts
+        val shortBuffer = buffer.order(ByteOrder.LITTLE_ENDIAN).asShortBuffer()
+        val numShorts = shortBuffer.remaining()
+        
+        if (tempInputShorts.size < numShorts) {
+            tempInputShorts = ShortArray(numShorts)
+        }
+        shortBuffer.get(tempInputShorts, 0, numShorts)
+        
+        // Process through engine
+        val (processed, outputCount) = engine.process(tempInputShorts, numShorts)
+        
+        if (outputCount > 0) {
+            // Convert back to bytes
+            val outputBytes = ByteArray(outputCount * 2)
+            val outBuf = ByteBuffer.wrap(outputBytes).order(ByteOrder.LITTLE_ENDIAN)
+            for (i in 0 until outputCount) {
+                outBuf.putShort(processed[i])
+            }
+            outputBuffer = ByteBuffer.wrap(outputBytes)
+        } else {
+            outputBuffer = EMPTY_BUFFER
+        }
+        
+        buffer.position(buffer.limit())
+    }
+    
+    override fun queueEndOfStream() {
+        inputEnded = true
+        engine.flush()
+    }
+    
+    override fun getOutput(): ByteBuffer {
+        if (!isActive) {
+            val out = inputBuffer
+            inputBuffer = EMPTY_BUFFER
+            return out
+        }
+        
+        val out = outputBuffer
+        outputBuffer = EMPTY_BUFFER
+        return out
+    }
+    
+    override fun isEnded(): Boolean = inputEnded && outputBuffer === EMPTY_BUFFER
+    
+    override fun flush() {
+        inputBuffer = EMPTY_BUFFER
+        outputBuffer = EMPTY_BUFFER
+        inputEnded = false
+        engine.clear()
+    }
+    
+    override fun reset() {
+        flush()
+        isActive = false
+        inputFormat = AudioFormat.NOT_SET
+        outputFormat = AudioFormat.NOT_SET
+        engine.release()
+    }
+}
+
+private val EMPTY_BUFFER: ByteBuffer = ByteBuffer.allocate(0)
