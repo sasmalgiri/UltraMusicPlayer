@@ -201,6 +201,27 @@ class AudioBattleEngine @Inject constructor(
                 applyCrowdReachEQ()
                 setVirtualizer(1000)
             }
+            BattleMode.MAXIMUM_IMPACT -> {
+                // Maximum power - everything at peak
+                setBassBoost(1000)
+                setLoudness(1000)
+                applyFullAssaultEQ()
+                setVirtualizer(1000)
+            }
+            BattleMode.BALANCED_BATTLE -> {
+                // Balanced approach for general battles
+                setBassBoost(700)
+                setLoudness(700)
+                applyBassWarfareEQ()
+                setVirtualizer(500)
+            }
+            BattleMode.INDOOR_BATTLE -> {
+                // Indoor optimized - less bass reflection
+                setBassBoost(600)
+                setLoudness(800)
+                applyClarityEQ()
+                setVirtualizer(400)
+            }
         }
     }
     

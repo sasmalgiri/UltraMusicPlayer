@@ -140,7 +140,7 @@ class GrokAIService @Inject constructor(
             
             OPPONENT ANALYSIS:
             - BPM: $opponentBpm
-            - Dominant Frequency: ${opponentDominantFrequency.label} (${opponentDominantFrequency.range})
+            - Dominant Frequency: ${opponentDominantFrequency.displayName}
             - Energy Level: ${(opponentEnergy * 100).toInt()}%
             
             AVAILABLE SONGS:
