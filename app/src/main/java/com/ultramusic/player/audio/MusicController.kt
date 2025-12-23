@@ -73,7 +73,27 @@ class MusicController @Inject constructor(
     private var currentPitchSemitones = 0.0f
     private var battleModeEnabled = false
     private var bassBoostDb = 0.0f
-    
+
+    // Player listener - MUST be defined before init block
+    private val playerListener = object : Player.Listener {
+        override fun onPlaybackStateChanged(state: Int) {
+            when (state) {
+                Player.STATE_READY -> {
+                    updatePlaybackState()
+                    startProgressUpdates()
+                }
+                Player.STATE_ENDED -> {
+                    handlePlaybackEnded()
+                }
+            }
+        }
+
+        override fun onIsPlayingChanged(isPlaying: Boolean) {
+            _playbackState.value = _playbackState.value.copy(isPlaying = isPlaying)
+            if (isPlaying) startProgressUpdates() else stopProgressUpdates()
+        }
+    }
+
     init {
         initializeAudioProcessing()
         initializePlayer()
@@ -142,26 +162,7 @@ class MusicController @Inject constructor(
         
         android.util.Log.i(TAG, "✅ ExoPlayer initialized with custom audio pipeline")
     }
-    
-    private val playerListener = object : Player.Listener {
-        override fun onPlaybackStateChanged(state: Int) {
-            when (state) {
-                Player.STATE_READY -> {
-                    updatePlaybackState()
-                    startProgressUpdates()
-                }
-                Player.STATE_ENDED -> {
-                    handlePlaybackEnded()
-                }
-            }
-        }
-        
-        override fun onIsPlayingChanged(isPlaying: Boolean) {
-            _playbackState.value = _playbackState.value.copy(isPlaying = isPlaying)
-            if (isPlaying) startProgressUpdates() else stopProgressUpdates()
-        }
-    }
-    
+
     private fun handlePlaybackEnded() {
         val state = _playbackState.value
         
