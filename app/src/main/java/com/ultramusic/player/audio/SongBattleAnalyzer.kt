@@ -4,6 +4,7 @@ import android.content.Context
 import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.net.Uri
+import android.os.Build
 import com.ultramusic.player.data.Song
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -58,9 +59,21 @@ class SongBattleAnalyzer @Inject constructor(
                     val format = extractor.getTrackFormat(i)
                     val mime = format.getString(MediaFormat.KEY_MIME)
                     if (mime?.startsWith("audio/") == true) {
-                        sampleRate = format.getInteger(MediaFormat.KEY_SAMPLE_RATE, 44100)
-                        bitrate = format.getInteger(MediaFormat.KEY_BIT_RATE, 320000)
-                        channels = format.getInteger(MediaFormat.KEY_CHANNEL_COUNT, 2)
+                        sampleRate = if (Build.VERSION.SDK_INT >= 29) {
+                            format.getInteger(MediaFormat.KEY_SAMPLE_RATE, 44100)
+                        } else {
+                            if (format.containsKey(MediaFormat.KEY_SAMPLE_RATE)) format.getInteger(MediaFormat.KEY_SAMPLE_RATE) else 44100
+                        }
+                        bitrate = if (Build.VERSION.SDK_INT >= 29) {
+                            format.getInteger(MediaFormat.KEY_BIT_RATE, 320000)
+                        } else {
+                            if (format.containsKey(MediaFormat.KEY_BIT_RATE)) format.getInteger(MediaFormat.KEY_BIT_RATE) else 320000
+                        }
+                        channels = if (Build.VERSION.SDK_INT >= 29) {
+                            format.getInteger(MediaFormat.KEY_CHANNEL_COUNT, 2)
+                        } else {
+                            if (format.containsKey(MediaFormat.KEY_CHANNEL_COUNT)) format.getInteger(MediaFormat.KEY_CHANNEL_COUNT) else 2
+                        }
                         break
                     }
                 }

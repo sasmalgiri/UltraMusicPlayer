@@ -1,6 +1,8 @@
 package com.ultramusic.player.audio
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
@@ -8,6 +10,8 @@ import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
 import android.os.Build
+import androidx.core.content.ContextCompat
+import androidx.media3.common.util.UnstableApi
 import com.ultramusic.player.data.Song
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -42,6 +46,7 @@ import kotlin.math.sqrt
  * 10. Battle Scripts - Pre-programmed attack sequences
  */
 @Singleton
+@UnstableApi
 class ActiveBattleSystem @Inject constructor(
     private val context: Context
 ) {
@@ -654,8 +659,11 @@ class ActiveBattleSystem @Inject constructor(
     }
     
     // ==================== AUDIO CAPTURE ====================
-    
+
     private fun startAudioCapture() {
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            return
+        }
         try {
             val sampleRate = 44100
             val bufferSize = AudioRecord.getMinBufferSize(
@@ -672,6 +680,9 @@ class ActiveBattleSystem @Inject constructor(
                 bufferSize * 2
             )
             audioRecord?.startRecording()
+        } catch (e: SecurityException) {
+            // Permission can still be revoked at runtime
+            e.printStackTrace()
         } catch (e: Exception) {
             e.printStackTrace()
         }

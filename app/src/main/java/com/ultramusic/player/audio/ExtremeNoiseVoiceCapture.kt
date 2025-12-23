@@ -358,7 +358,9 @@ class ExtremeNoiseVoiceCapture @Inject constructor(
      * Initialize audio record for noise monitoring
      */
     private fun initializeAudioRecord() {
-        if (!hasPermission()) return
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            return
+        }
         
         try {
             val bufferSize = AudioRecord.getMinBufferSize(

@@ -33,6 +33,7 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
+import androidx.media3.common.util.UnstableApi
 import javax.inject.Singleton
 
 @Module
@@ -138,6 +139,7 @@ object AppModule {
     
     @Provides
     @Singleton
+    @UnstableApi
     fun provideMusicController(
         @ApplicationContext context: Context,
         nativeBattleEngine: NativeBattleEngine

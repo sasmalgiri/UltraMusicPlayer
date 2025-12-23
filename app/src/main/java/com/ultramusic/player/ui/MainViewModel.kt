@@ -2,6 +2,7 @@ package com.ultramusic.player.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.media3.common.util.UnstableApi
 import com.ultramusic.player.ai.CounterEngineState
 import com.ultramusic.player.ai.CounterRecommendation
 import com.ultramusic.player.ai.CounterSongEngine
@@ -60,6 +61,16 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /**
+ * Browse tabs for the home screen
+ */
+enum class BrowseTab {
+    ALL_SONGS,
+    ARTISTS,
+    ALBUMS,
+    FOLDERS
+}
+
+/**
  * UI State for the main screen
  */
 data class MainUiState(
@@ -75,10 +86,18 @@ data class MainUiState(
     val errorMessage: String? = null,
     val qualityWarning: String? = null,
     val qualityPercent: Int = 100,
-    val formantPreservation: Boolean = true
+    val formantPreservation: Boolean = true,
+    // Browse tabs
+    val selectedBrowseTab: BrowseTab = BrowseTab.ALL_SONGS,
+    val artistsList: List<Pair<String, Int>> = emptyList(), // Artist name to song count
+    val albumsList: List<Triple<String, String, Int>> = emptyList(), // Album, Artist, song count
+    // Selection mode
+    val isSelectionMode: Boolean = false,
+    val selectedSongIds: Set<Long> = emptySet()
 )
 
 @HiltViewModel
+@UnstableApi
 class MainViewModel @Inject constructor(
     private val musicRepository: MusicRepository,
     private val folderRepository: FolderRepository,
@@ -256,6 +275,9 @@ class MainViewModel @Inject constructor(
                     
                     // Index songs for battle (INSTANT counter picks!)
                     indexSongsForBattle(songs)
+
+                    // Update artists and albums lists for browse tabs
+                    updateArtistsAndAlbums()
                 }
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
@@ -1026,7 +1048,115 @@ class MainViewModel @Inject constructor(
             filteredSongs = applySearch(sorted, _uiState.value.searchQuery)
         )
     }
-    
+
+    // ==================== BROWSE TABS ====================
+
+    fun setBrowseTab(tab: BrowseTab) {
+        _uiState.value = _uiState.value.copy(selectedBrowseTab = tab)
+        // Exit selection mode when switching tabs
+        if (_uiState.value.isSelectionMode) {
+            exitSelectionMode()
+        }
+    }
+
+    private fun updateArtistsAndAlbums() {
+        val songs = _uiState.value.songs
+        // Group by artist with song count
+        val artists = songs.groupBy { it.artist }
+            .map { (artist, artistSongs) -> Pair(artist, artistSongs.size) }
+            .sortedBy { it.first.lowercase() }
+
+        // Group by album with artist and song count
+        val albums = songs.groupBy { it.album }
+            .map { (album, albumSongs) ->
+                val primaryArtist = albumSongs.firstOrNull()?.artist ?: "Unknown Artist"
+                Triple(album, primaryArtist, albumSongs.size)
+            }
+            .sortedBy { it.first.lowercase() }
+
+        _uiState.value = _uiState.value.copy(
+            artistsList = artists,
+            albumsList = albums
+        )
+    }
+
+    fun getSongsByArtist(artist: String): List<Song> {
+        return _uiState.value.songs.filter { it.artist == artist }
+    }
+
+    fun getSongsByAlbum(album: String): List<Song> {
+        return _uiState.value.songs.filter { it.album == album }
+    }
+
+    fun playArtist(artist: String) {
+        val artistSongs = getSongsByArtist(artist)
+        if (artistSongs.isNotEmpty()) {
+            musicController.playSong(artistSongs.first(), artistSongs)
+        }
+    }
+
+    fun playAlbum(album: String) {
+        val albumSongs = getSongsByAlbum(album)
+        if (albumSongs.isNotEmpty()) {
+            musicController.playSong(albumSongs.first(), albumSongs)
+        }
+    }
+
+    // ==================== SELECTION MODE ====================
+
+    fun enterSelectionMode(songId: Long) {
+        _uiState.value = _uiState.value.copy(
+            isSelectionMode = true,
+            selectedSongIds = setOf(songId)
+        )
+    }
+
+    fun exitSelectionMode() {
+        _uiState.value = _uiState.value.copy(
+            isSelectionMode = false,
+            selectedSongIds = emptySet()
+        )
+    }
+
+    fun toggleSongSelection(songId: Long) {
+        val currentSelected = _uiState.value.selectedSongIds
+        val newSelected = if (songId in currentSelected) {
+            currentSelected - songId
+        } else {
+            currentSelected + songId
+        }
+        _uiState.value = _uiState.value.copy(selectedSongIds = newSelected)
+        // Exit selection mode if nothing selected
+        if (newSelected.isEmpty()) {
+            exitSelectionMode()
+        }
+    }
+
+    fun selectAllSongs() {
+        val allIds = _uiState.value.filteredSongs.map { it.id }.toSet()
+        _uiState.value = _uiState.value.copy(selectedSongIds = allIds)
+    }
+
+    fun deselectAllSongs() {
+        _uiState.value = _uiState.value.copy(selectedSongIds = emptySet())
+    }
+
+    fun addSelectedToPlaylist() {
+        val selectedSongs = _uiState.value.filteredSongs.filter { it.id in _uiState.value.selectedSongIds }
+        selectedSongs.forEach { song ->
+            smartPlaylistManager.addSong(song)
+        }
+        exitSelectionMode()
+    }
+
+    fun playSelectedSongs() {
+        val selectedSongs = _uiState.value.filteredSongs.filter { it.id in _uiState.value.selectedSongIds }
+        if (selectedSongs.isNotEmpty()) {
+            musicController.playSong(selectedSongs.first(), selectedSongs)
+        }
+        exitSelectionMode()
+    }
+
     // ==================== PLAYBACK CONTROLS ====================
     
     fun playSong(song: Song) {

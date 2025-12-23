@@ -58,7 +58,7 @@ fun UltraMusicNavigation() {
     
     NavHost(
         navController = navController,
-        startDestination = "easy_player"  // Changed to Easy Player as default
+        startDestination = "home"  // Home screen with browse tabs for easy navigation
     ) {
         // Main Easy Player Screen - the primary UI
         composable("easy_player") {
