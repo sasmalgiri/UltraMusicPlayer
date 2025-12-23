@@ -42,9 +42,12 @@ class MusicRepository @Inject constructor(
             MediaStore.Audio.Media.DURATION,
             MediaStore.Audio.Media.DATA,
             MediaStore.Audio.Media.DATE_ADDED,
-            MediaStore.Audio.Media.SIZE
+            MediaStore.Audio.Media.SIZE,
+            MediaStore.Audio.Media.MIME_TYPE
         )
-        
+
+        // Include all audio files with duration > 10 seconds
+        // This covers: MP3, WAV, FLAC, AAC, OGG, OPUS, M4A, WMA, AIFF, etc.
         val selection = "${MediaStore.Audio.Media.IS_MUSIC} != 0 AND ${MediaStore.Audio.Media.DURATION} > 10000"
         val sortOrder = "${MediaStore.Audio.Media.TITLE} ASC"
         
@@ -64,7 +67,8 @@ class MusicRepository @Inject constructor(
             val dataColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DATA)
             val dateAddedColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DATE_ADDED)
             val sizeColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.SIZE)
-            
+            val mimeTypeColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.MIME_TYPE)
+
             while (cursor.moveToNext()) {
                 val id = cursor.getLong(idColumn)
                 val title = cursor.getString(titleColumn) ?: "Unknown"
@@ -75,6 +79,12 @@ class MusicRepository @Inject constructor(
                 val path = cursor.getString(dataColumn) ?: ""
                 val dateAdded = cursor.getLong(dateAddedColumn)
                 val size = cursor.getLong(sizeColumn)
+                val mimeType = cursor.getString(mimeTypeColumn) ?: ""
+
+                // Estimate bitrate from file size and duration
+                val bitrate = if (duration > 0 && size > 0) {
+                    ((size * 8) / (duration / 1000) / 1000).toInt()
+                } else 0
                 
                 val contentUri = ContentUris.withAppendedId(
                     MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
@@ -97,7 +107,9 @@ class MusicRepository @Inject constructor(
                         albumArtUri = albumArtUri,
                         path = path,
                         dateAdded = dateAdded,
-                        size = size
+                        size = size,
+                        mimeType = mimeType,
+                        bitrate = bitrate
                     )
                 )
             }
@@ -130,7 +142,30 @@ class MusicRepository @Inject constructor(
             SortOption.ALBUM -> songs.sortedBy { it.album.lowercase() }
             SortOption.DATE_ADDED -> songs.sortedByDescending { it.dateAdded }
             SortOption.DURATION -> songs.sortedByDescending { it.duration }
+            SortOption.FORMAT -> songs.sortedBy { it.format.displayName }
+            SortOption.SIZE -> songs.sortedByDescending { it.size }
         }
+    }
+
+    /**
+     * Get format statistics for the library
+     */
+    fun getFormatStats(songs: List<Song>): Map<AudioFormat, Int> {
+        return songs.groupingBy { it.format }.eachCount()
+    }
+
+    /**
+     * Get songs by format
+     */
+    fun getSongsByFormat(songs: List<Song>, format: AudioFormat): List<Song> {
+        return songs.filter { it.format == format }
+    }
+
+    /**
+     * Get lossless songs only
+     */
+    fun getLosslessSongs(songs: List<Song>): List<Song> {
+        return songs.filter { it.format.isLossless }
     }
     
     /**

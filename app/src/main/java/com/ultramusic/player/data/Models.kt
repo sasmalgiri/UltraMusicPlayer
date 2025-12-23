@@ -15,7 +15,10 @@ data class Song(
     val albumArtUri: Uri?,
     val path: String,
     val dateAdded: Long = 0,
-    val size: Long = 0
+    val size: Long = 0,
+    val mimeType: String = "",
+    val bitrate: Int = 0,
+    val sampleRate: Int = 0
 ) {
     val durationFormatted: String
         get() {
@@ -23,6 +26,122 @@ data class Song(
             val seconds = (duration / 1000) % 60
             return "%d:%02d".format(minutes, seconds)
         }
+
+    /**
+     * Audio format derived from MIME type or file extension
+     */
+    val format: AudioFormat
+        get() = AudioFormat.fromMimeType(mimeType, path)
+
+    /**
+     * Human-readable format string (e.g., "MP3 320kbps")
+     */
+    val formatInfo: String
+        get() {
+            val formatName = format.displayName
+            return when {
+                bitrate > 0 -> "$formatName ${bitrate}kbps"
+                else -> formatName
+            }
+        }
+
+    /**
+     * File size formatted (e.g., "3.5 MB")
+     */
+    val sizeFormatted: String
+        get() {
+            return when {
+                size >= 1_073_741_824 -> "%.1f GB".format(size / 1_073_741_824.0)
+                size >= 1_048_576 -> "%.1f MB".format(size / 1_048_576.0)
+                size >= 1024 -> "%.1f KB".format(size / 1024.0)
+                else -> "$size B"
+            }
+        }
+
+    /**
+     * Quality indicator based on format and bitrate
+     */
+    val qualityTier: QualityTier
+        get() = when {
+            format.isLossless -> QualityTier.LOSSLESS
+            format == AudioFormat.AAC && bitrate >= 256 -> QualityTier.HIGH
+            format == AudioFormat.MP3 && bitrate >= 320 -> QualityTier.HIGH
+            bitrate >= 192 -> QualityTier.GOOD
+            bitrate > 0 -> QualityTier.STANDARD
+            format.isLossless -> QualityTier.LOSSLESS
+            else -> QualityTier.UNKNOWN
+        }
+}
+
+/**
+ * Supported audio formats with metadata
+ */
+enum class AudioFormat(
+    val displayName: String,
+    val extensions: List<String>,
+    val mimeTypes: List<String>,
+    val isLossless: Boolean = false
+) {
+    MP3("MP3", listOf("mp3"), listOf("audio/mpeg", "audio/mp3")),
+    AAC("AAC", listOf("aac", "m4a"), listOf("audio/aac", "audio/mp4", "audio/x-m4a")),
+    FLAC("FLAC", listOf("flac"), listOf("audio/flac", "audio/x-flac"), isLossless = true),
+    WAV("WAV", listOf("wav"), listOf("audio/wav", "audio/x-wav", "audio/vnd.wave"), isLossless = true),
+    OGG("OGG", listOf("ogg", "oga"), listOf("audio/ogg", "application/ogg")),
+    OPUS("Opus", listOf("opus"), listOf("audio/opus")),
+    ALAC("ALAC", listOf("m4a"), listOf("audio/x-alac"), isLossless = true),
+    AIFF("AIFF", listOf("aiff", "aif"), listOf("audio/aiff", "audio/x-aiff"), isLossless = true),
+    WMA("WMA", listOf("wma"), listOf("audio/x-ms-wma")),
+    AMR("AMR", listOf("amr"), listOf("audio/amr")),
+    MIDI("MIDI", listOf("mid", "midi"), listOf("audio/midi", "audio/x-midi")),
+    WEBM("WebM", listOf("webm"), listOf("audio/webm")),
+    MKA("MKA", listOf("mka"), listOf("audio/x-matroska")),
+    APE("APE", listOf("ape"), listOf("audio/ape", "audio/x-ape"), isLossless = true),
+    DSD("DSD", listOf("dsf", "dff"), listOf("audio/dsd", "audio/x-dsd"), isLossless = true),
+    UNKNOWN("Audio", emptyList(), emptyList());
+
+    companion object {
+        /**
+         * All supported audio extensions for file filtering
+         */
+        val SUPPORTED_EXTENSIONS = entries.flatMap { it.extensions }.distinct()
+
+        /**
+         * All supported MIME types
+         */
+        val SUPPORTED_MIME_TYPES = entries.flatMap { it.mimeTypes }.distinct()
+
+        fun fromMimeType(mimeType: String, path: String = ""): AudioFormat {
+            // Try MIME type first
+            val byMime = entries.find { format ->
+                format.mimeTypes.any { it.equals(mimeType, ignoreCase = true) }
+            }
+            if (byMime != null && byMime != UNKNOWN) return byMime
+
+            // Fallback to extension
+            val extension = path.substringAfterLast('.', "").lowercase()
+            return entries.find { format ->
+                format.extensions.contains(extension)
+            } ?: UNKNOWN
+        }
+
+        fun fromExtension(extension: String): AudioFormat {
+            val ext = extension.lowercase().removePrefix(".")
+            return entries.find { format ->
+                format.extensions.contains(ext)
+            } ?: UNKNOWN
+        }
+    }
+}
+
+/**
+ * Audio quality tier for display
+ */
+enum class QualityTier(val displayName: String, val emoji: String) {
+    LOSSLESS("Lossless", "🎯"),
+    HIGH("High Quality", "⭐"),
+    GOOD("Good", "👍"),
+    STANDARD("Standard", "📻"),
+    UNKNOWN("Unknown", "❓")
 }
 
 /**
@@ -106,7 +225,9 @@ enum class SortOption {
     ARTIST,
     ALBUM,
     DATE_ADDED,
-    DURATION
+    DURATION,
+    FORMAT,
+    SIZE
 }
 
 /**
