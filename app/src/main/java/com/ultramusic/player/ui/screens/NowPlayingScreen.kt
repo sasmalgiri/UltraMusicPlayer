@@ -26,8 +26,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Autorenew
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Loop
 import androidx.compose.material.icons.filled.MusicNote
@@ -73,9 +73,11 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.ultramusic.player.data.AudioPreset
@@ -511,6 +513,9 @@ fun NowPlayingScreen(
                         val end = playbackState.abLoopEnd ?: song.duration
                         viewModel.saveClipToArmory(song, start, end)
                     }
+                },
+                onSetManualTime = { startMs, endMs ->
+                    viewModel.setManualLoopPoints(startMs, endMs)
                 }
             )
         }
@@ -533,11 +538,16 @@ private fun ABLoopPanel(
     onSaveClip: (com.ultramusic.player.core.DetectedClip) -> Unit = {},
     onSaveToArmory: () -> Unit = {},
     onPreviewClip: (com.ultramusic.player.core.DetectedClip) -> Unit = {},
-    onSaveAllClips: () -> Unit = {}
+    onSaveAllClips: () -> Unit = {},
+    onSetManualTime: (startMs: Long, endMs: Long) -> Unit = { _, _ -> }
 ) {
     // Track selected clips for batch operations
     var selectedClipIds by remember { mutableStateOf(setOf<String>()) }
     var showEditDialog by remember { mutableStateOf<com.ultramusic.player.core.DetectedClip?>(null) }
+
+    // Time input dialog state
+    var showTimeInputForA by remember { mutableStateOf(false) }
+    var showTimeInputForB by remember { mutableStateOf(false) }
     
     fun formatTime(ms: Long): String {
         val minutes = (ms / 1000) / 60
@@ -724,31 +734,40 @@ private fun ABLoopPanel(
                             fontSize = 14.sp
                         )
                         Spacer(modifier = Modifier.height(8.dp))
-                        
+
+                        // Time display row - tappable to edit manually
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceEvenly
+                            horizontalArrangement = Arrangement.SpaceEvenly,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            // Set A button
+                            // A time display with edit
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                androidx.compose.material3.Button(
-                                    onClick = onSetStart,
-                                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(
-                                        containerColor = if (abLoopStart != null)
-                                            Color(0xFF4CAF50) else Color(0xFF555555)
-                                    ),
-                                    modifier = Modifier.size(60.dp)
+                                Text("A", color = Color(0xFF4CAF50), fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier
+                                        .background(Color(0xFF333333), RoundedCornerShape(8.dp))
+                                        .clickable { showTimeInputForA = true }
+                                        .padding(horizontal = 12.dp, vertical = 6.dp)
                                 ) {
-                                    Text("A", fontWeight = FontWeight.Bold)
+                                    Text(
+                                        text = abLoopStart?.let { formatTime(it) } ?: "--:--",
+                                        color = Color.White,
+                                        fontSize = 16.sp,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Icon(
+                                        Icons.Default.Edit,
+                                        contentDescription = "Edit A time",
+                                        tint = Color(0xFF2196F3),
+                                        modifier = Modifier.size(16.dp)
+                                    )
                                 }
-                                Text(
-                                    text = abLoopStart?.let { formatTime(it) } ?: "--:--",
-                                    color = Color.White,
-                                    fontSize = 11.sp
-                                )
                             }
-                            
-                            // Current position
+
+                            // Current position indicator
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text("NOW", color = Color.Gray, fontSize = 10.sp)
                                 Text(
@@ -758,28 +777,67 @@ private fun ABLoopPanel(
                                     fontSize = 18.sp
                                 )
                             }
-                            
-                            // Set B button
+
+                            // B time display with edit
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                androidx.compose.material3.Button(
-                                    onClick = onSetEnd,
-                                    enabled = abLoopStart != null,
-                                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(
-                                        containerColor = if (abLoopEnd != null)
-                                            Color(0xFFE91E63) else Color(0xFF555555)
-                                    ),
-                                    modifier = Modifier.size(60.dp)
+                                Text("B", color = Color(0xFFE91E63), fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier
+                                        .background(Color(0xFF333333), RoundedCornerShape(8.dp))
+                                        .clickable { showTimeInputForB = true }
+                                        .padding(horizontal = 12.dp, vertical = 6.dp)
                                 ) {
-                                    Text("B", fontWeight = FontWeight.Bold)
+                                    Text(
+                                        text = abLoopEnd?.let { formatTime(it) } ?: "--:--",
+                                        color = Color.White,
+                                        fontSize = 16.sp,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Icon(
+                                        Icons.Default.Edit,
+                                        contentDescription = "Edit B time",
+                                        tint = Color(0xFF2196F3),
+                                        modifier = Modifier.size(16.dp)
+                                    )
                                 }
-                                Text(
-                                    text = abLoopEnd?.let { formatTime(it) } ?: "--:--",
-                                    color = Color.White,
-                                    fontSize = 11.sp
-                                )
                             }
                         }
-                        
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        // Quick set buttons - set at current playback position
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceEvenly
+                        ) {
+                            // Set A at current position
+                            androidx.compose.material3.Button(
+                                onClick = onSetStart,
+                                colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                                    containerColor = if (abLoopStart != null)
+                                        Color(0xFF4CAF50) else Color(0xFF555555)
+                                ),
+                                modifier = Modifier.weight(1f).padding(end = 4.dp)
+                            ) {
+                                Text("Set A Here", fontSize = 12.sp)
+                            }
+
+                            // Set B at current position
+                            androidx.compose.material3.Button(
+                                onClick = onSetEnd,
+                                enabled = abLoopStart != null,
+                                colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                                    containerColor = if (abLoopEnd != null)
+                                        Color(0xFFE91E63) else Color(0xFF555555)
+                                ),
+                                modifier = Modifier.weight(1f).padding(start = 4.dp)
+                            ) {
+                                Text("Set B Here", fontSize = 12.sp)
+                            }
+                        }
+
                         // Loop info
                         if (abLoopStart != null && abLoopEnd != null) {
                             Spacer(modifier = Modifier.height(8.dp))
@@ -834,6 +892,40 @@ private fun ABLoopPanel(
             onSave = { editedClip ->
                 onSaveClip(editedClip)
                 showEditDialog = null
+            }
+        )
+    }
+
+    // Time Input Dialog for A
+    if (showTimeInputForA) {
+        TimeInputDialog(
+            title = "Set Point A",
+            initialTimeMs = abLoopStart ?: 0L,
+            maxTimeMs = duration,
+            onDismiss = { showTimeInputForA = false },
+            onConfirm = { newTimeMs ->
+                // Set A, keep B if it's still valid (after A), otherwise use duration as placeholder
+                val validEnd = if (abLoopEnd != null && abLoopEnd > newTimeMs) abLoopEnd else duration
+                onSetManualTime(newTimeMs, validEnd)
+                showTimeInputForA = false
+            }
+        )
+    }
+
+    // Time Input Dialog for B
+    if (showTimeInputForB) {
+        TimeInputDialog(
+            title = "Set Point B",
+            initialTimeMs = abLoopEnd ?: (abLoopStart?.plus(1000) ?: 0L),
+            maxTimeMs = duration,
+            minTimeMs = abLoopStart?.plus(1) ?: 0L,
+            onDismiss = { showTimeInputForB = false },
+            onConfirm = { newTimeMs ->
+                val startMs = abLoopStart ?: 0L
+                if (newTimeMs > startMs) {
+                    onSetManualTime(startMs, newTimeMs)
+                }
+                showTimeInputForB = false
             }
         )
     }
@@ -1019,6 +1111,149 @@ private fun EditClipDialog(
                 }
             ) {
                 Text("Save")
+            }
+        },
+        dismissButton = {
+            androidx.compose.material3.TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
+}
+
+/**
+ * Dialog for manual time input (MM:SS format)
+ */
+@Composable
+private fun TimeInputDialog(
+    title: String,
+    initialTimeMs: Long,
+    maxTimeMs: Long,
+    minTimeMs: Long = 0L,
+    onDismiss: () -> Unit,
+    onConfirm: (Long) -> Unit
+) {
+    // Parse initial time
+    val initialMinutes = ((initialTimeMs / 1000) / 60).toInt()
+    val initialSeconds = ((initialTimeMs / 1000) % 60).toInt()
+
+    var minutes by remember { mutableStateOf(initialMinutes.toString()) }
+    var seconds by remember { mutableStateOf(initialSeconds.toString().padStart(2, '0')) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    fun formatTime(ms: Long): String {
+        val m = (ms / 1000) / 60
+        val s = (ms / 1000) % 60
+        return "%d:%02d".format(m, s)
+    }
+
+    fun validateAndGetMs(): Long? {
+        val mins = minutes.toIntOrNull() ?: 0
+        val secs = seconds.toIntOrNull() ?: 0
+
+        if (secs >= 60) {
+            errorMessage = "Seconds must be 0-59"
+            return null
+        }
+
+        val totalMs = ((mins * 60L) + secs) * 1000L
+
+        if (totalMs < minTimeMs) {
+            errorMessage = "Must be after ${formatTime(minTimeMs)}"
+            return null
+        }
+
+        if (totalMs > maxTimeMs) {
+            errorMessage = "Must be before ${formatTime(maxTimeMs)}"
+            return null
+        }
+
+        errorMessage = null
+        return totalMs
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title, fontWeight = FontWeight.Bold) },
+        text = {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    "Enter time in MM:SS format",
+                    color = Color.Gray,
+                    fontSize = 12.sp
+                )
+
+                Row(
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Minutes field
+                    OutlinedTextField(
+                        value = minutes,
+                        onValueChange = { newValue ->
+                            if (newValue.all { it.isDigit() } && newValue.length <= 3) {
+                                minutes = newValue
+                                errorMessage = null
+                            }
+                        },
+                        label = { Text("Min") },
+                        modifier = Modifier.width(80.dp),
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    )
+
+                    Text(
+                        ":",
+                        fontSize = 24.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 8.dp)
+                    )
+
+                    // Seconds field
+                    OutlinedTextField(
+                        value = seconds,
+                        onValueChange = { newValue ->
+                            if (newValue.all { it.isDigit() } && newValue.length <= 2) {
+                                seconds = newValue
+                                errorMessage = null
+                            }
+                        },
+                        label = { Text("Sec") },
+                        modifier = Modifier.width(80.dp),
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    )
+                }
+
+                // Error message
+                errorMessage?.let { error ->
+                    Text(
+                        text = error,
+                        color = Color(0xFFE91E63),
+                        fontSize = 12.sp
+                    )
+                }
+
+                // Duration info
+                Text(
+                    "Song duration: ${formatTime(maxTimeMs)}",
+                    color = Color.Gray,
+                    fontSize = 11.sp
+                )
+            }
+        },
+        confirmButton = {
+            androidx.compose.material3.Button(
+                onClick = {
+                    validateAndGetMs()?.let { timeMs ->
+                        onConfirm(timeMs)
+                    }
+                }
+            ) {
+                Text("Set")
             }
         },
         dismissButton = {

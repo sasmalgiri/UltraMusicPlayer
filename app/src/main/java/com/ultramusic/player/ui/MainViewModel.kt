@@ -1142,7 +1142,14 @@ class MainViewModel @Inject constructor(
     fun clearABLoop() {
         musicController.clearABLoop()
     }
-    
+
+    /**
+     * Set A-B loop points manually with specific timestamps
+     */
+    fun setManualLoopPoints(startMs: Long, endMs: Long) {
+        musicController.setLoopPoints(startMs, endMs)
+    }
+
     /**
      * Save current A-B loop as a counter clip to Battle Armory
      */
