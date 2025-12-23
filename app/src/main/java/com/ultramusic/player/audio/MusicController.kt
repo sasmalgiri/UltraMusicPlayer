@@ -10,6 +10,7 @@ import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.audio.AudioProcessor
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.audio.AudioSink
@@ -144,8 +145,21 @@ class MusicController @Inject constructor(
         }
         
         renderersFactory.setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
-        
+
+        // Optimized load control for memory efficiency with large audio files
+        val loadControl = DefaultLoadControl.Builder()
+            .setBufferDurationsMs(
+                5_000,   // Min buffer (5 seconds - reduced from default 50s)
+                30_000,  // Max buffer (30 seconds - reduced from default 50s)
+                1_000,   // Buffer for playback (1 second)
+                2_000    // Buffer for rebuffer (2 seconds)
+            )
+            .setTargetBufferBytes(C.LENGTH_UNSET) // Don't limit by bytes
+            .setPrioritizeTimeOverSizeThresholds(true)
+            .build()
+
         exoPlayer = ExoPlayer.Builder(context, renderersFactory)
+            .setLoadControl(loadControl)
             .setHandleAudioBecomingNoisy(true)
             .setAudioAttributes(
                 AudioAttributes.Builder()
@@ -159,8 +173,8 @@ class MusicController @Inject constructor(
                 addListener(playerListener)
                 repeatMode = Player.REPEAT_MODE_OFF
             }
-        
-        android.util.Log.i(TAG, "✅ ExoPlayer initialized with custom audio pipeline")
+
+        android.util.Log.i(TAG, "✅ ExoPlayer initialized with optimized memory settings")
     }
 
     private fun handlePlaybackEnded() {
