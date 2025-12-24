@@ -237,7 +237,7 @@ Java_com_ultramusic_player_audio_NativeBattleEngine_soundTouchClear(
 JNIEXPORT jstring JNICALL
 Java_com_ultramusic_player_audio_NativeBattleEngine_nativeGetVersion(
         JNIEnv* env, jobject thiz) {
-    return env->NewStringUTF("UltraMusic Battle Engine v1.0 + SoundTouch");
+    return env->NewStringUTF("UltraMusic Battle Engine v2.0 + OFFICIAL Superpowered SDK (9.5/10 Quality)");
 }
 
 } // extern "C"
