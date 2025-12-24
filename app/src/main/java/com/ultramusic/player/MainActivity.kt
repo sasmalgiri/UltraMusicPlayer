@@ -309,6 +309,12 @@ fun UltraMusicNavigation() {
                 },
                 onNavigateToPlaylist = {
                     navController.navigate("playlist")
+                },
+                onNavigateToEasyPlayer = {
+                    navController.navigate("easy_player")
+                },
+                onNavigateToEnhancements = {
+                    navController.navigate("enhancements")
                 }
             )
         }

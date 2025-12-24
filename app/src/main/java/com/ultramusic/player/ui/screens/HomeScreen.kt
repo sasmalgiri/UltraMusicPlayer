@@ -38,6 +38,8 @@ import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.filled.Sort
+import androidx.compose.material.icons.filled.SportsKabaddi
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -90,7 +92,9 @@ fun HomeScreen(
     onNavigateToNowPlaying: () -> Unit,
     onNavigateToFolders: () -> Unit,
     onNavigateToVoiceSearch: () -> Unit,
-    onNavigateToPlaylist: () -> Unit
+    onNavigateToPlaylist: () -> Unit,
+    onNavigateToEasyPlayer: () -> Unit,
+    onNavigateToEnhancements: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val playbackState by viewModel.playbackState.collectAsState()
@@ -134,16 +138,26 @@ fun HomeScreen(
                     }
                 },
                 actions = {
+                    // Battle Mode - Easy Player with battle features
+                    IconButton(onClick = onNavigateToEasyPlayer) {
+                        Icon(Icons.Default.SportsKabaddi, contentDescription = "Battle Mode")
+                    }
+
+                    // Audio Enhancements
+                    IconButton(onClick = onNavigateToEnhancements) {
+                        Icon(Icons.Default.Tune, contentDescription = "Enhancements")
+                    }
+
                     // Smart Playlist
                     IconButton(onClick = onNavigateToPlaylist) {
                         Icon(Icons.Default.QueueMusic, contentDescription = "Smart Playlist")
                     }
-                    
+
                     // Voice Search - for loud environments
                     IconButton(onClick = onNavigateToVoiceSearch) {
                         Icon(Icons.Default.Mic, contentDescription = "Voice Search")
                     }
-                    
+
                     // Folder browser
                     IconButton(onClick = onNavigateToFolders) {
                         Icon(Icons.Default.Folder, contentDescription = "Browse Folders")
