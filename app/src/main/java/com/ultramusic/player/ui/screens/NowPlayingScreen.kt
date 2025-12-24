@@ -569,6 +569,7 @@ fun NowPlayingScreen(
                 onSaveClip = { clip -> viewModel.saveDetectedClipToArmory(clip) },
                 onPreviewClip = { clip -> viewModel.setABFromDetectedClip(clip) },
                 onSaveAllClips = { viewModel.autoDetectAndSaveAllClips() },
+                onClose = { viewModel.toggleABLoopPanel() },
                 onSaveToArmory = {
                     // Save current A-B loop as counter clip
                     playbackState.currentSong?.let { song ->
@@ -602,6 +603,7 @@ private fun ABLoopPanel(
     onSaveToArmory: () -> Unit = {},
     onPreviewClip: (com.ultramusic.player.core.DetectedClip) -> Unit = {},
     onSaveAllClips: () -> Unit = {},
+    onClose: () -> Unit = {},
     onSetManualTime: (startMs: Long, endMs: Long) -> Unit = { _, _ -> }
 ) {
     // Track selected clips for batch operations
@@ -632,13 +634,26 @@ private fun ABLoopPanel(
                 .padding(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Header
+            // Header with close button
             item {
-                Text(
-                    text = "🎯 A-B Loop & Clip Detection",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "🎯 A-B Loop & Clip Detection",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    IconButton(onClick = onClose) {
+                        Icon(
+                            Icons.Default.KeyboardArrowDown,
+                            contentDescription = "Close",
+                            tint = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
                 Spacer(modifier = Modifier.height(12.dp))
             }
             
