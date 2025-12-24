@@ -391,7 +391,7 @@ private fun BattleControlPanel(
                             ),
                             shape = RoundedCornerShape(16.dp)
                         ) {
-                            Icon(Icons.Default.Stop, null)
+                            Icon(Icons.Filled.Stop, contentDescription = "End Battle")
                             Spacer(modifier = Modifier.width(8.dp))
                             Text("END")
                         }
@@ -407,7 +407,7 @@ private fun BattleControlPanel(
                             ),
                             shape = RoundedCornerShape(16.dp)
                         ) {
-                            Icon(Icons.Default.PlayArrow, null)
+                            Icon(Icons.Default.PlayArrow, contentDescription = "Resume Battle")
                             Spacer(modifier = Modifier.width(8.dp))
                             Text("RESUME")
                         }

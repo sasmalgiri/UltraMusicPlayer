@@ -38,6 +38,19 @@ val SpeedSlow = Color(0xFFFF9800)
 val PitchHigh = Color(0xFFE91E63)
 val PitchLow = Color(0xFF3F51B5)
 
+// Battle mode colors
+val BattleRed = Color(0xFFE53935)
+val BattleGreen = Color(0xFF43A047)
+val BattleOrange = Color(0xFFFF9800)
+val BattlePurple = Color(0xFF7B1FA2)
+
+// Light theme battle colors (vibrant but readable)
+val LightBattleBlue = Color(0xFF1976D2)
+val LightBattlePurple = Color(0xFF7B1FA2)
+val LightBattleAccent = Color(0xFF00ACC1)
+val LightCardBackground = Color(0xFFF5F5F5)
+val LightCardSurface = Color(0xFFFFFFFF)
+
 private val DarkColorScheme = darkColorScheme(
     primary = UltraBlue,
     secondary = UltraPurple,
@@ -49,27 +62,52 @@ private val DarkColorScheme = darkColorScheme(
     onTertiary = Color.White,
     onBackground = Color.White,
     onSurface = Color.White,
+    surfaceVariant = Color(0xFF2D2D2D),
+    onSurfaceVariant = Color(0xFFCACACA),
 )
 
 private val LightColorScheme = lightColorScheme(
-    primary = Purple40,
-    secondary = PurpleGrey40,
-    tertiary = Pink40,
-    background = Color(0xFFFFFBFE),
-    surface = Color(0xFFFFFBFE),
+    primary = LightBattleBlue,
+    secondary = LightBattlePurple,
+    tertiary = LightBattleAccent,
+    background = Color(0xFFFAFAFA),
+    surface = Color(0xFFFFFFFF),
+    surfaceVariant = LightCardBackground,
     onPrimary = Color.White,
     onSecondary = Color.White,
     onTertiary = Color.White,
     onBackground = Color(0xFF1C1B1F),
     onSurface = Color(0xFF1C1B1F),
+    onSurfaceVariant = Color(0xFF49454F),
+    outline = Color(0xFFE0E0E0),
+    outlineVariant = Color(0xFFCAC4D0),
+    error = BattleRed,
+    errorContainer = Color(0xFFFFDAD6),
+    onError = Color.White,
+    onErrorContainer = Color(0xFF410002),
 )
+
+/**
+ * Theme mode options
+ */
+enum class ThemeMode {
+    LIGHT,      // Always light theme
+    DARK,       // Always dark theme
+    SYSTEM      // Follow system setting
+}
 
 @Composable
 fun UltraMusicPlayerTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
-    dynamicColor: Boolean = true,
+    themeMode: ThemeMode = ThemeMode.LIGHT,  // Default to LIGHT for better visibility
+    dynamicColor: Boolean = false,  // Disable dynamic colors for consistent branding
     content: @Composable () -> Unit
 ) {
+    val darkTheme = when (themeMode) {
+        ThemeMode.LIGHT -> false
+        ThemeMode.DARK -> true
+        ThemeMode.SYSTEM -> isSystemInDarkTheme()
+    }
+
     val colorScheme = when {
         dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
             val context = LocalContext.current
@@ -78,7 +116,7 @@ fun UltraMusicPlayerTheme(
         darkTheme -> DarkColorScheme
         else -> LightColorScheme
     }
-    
+
     val view = LocalView.current
     if (!view.isInEditMode) {
         SideEffect {
@@ -93,3 +131,4 @@ fun UltraMusicPlayerTheme(
         content = content
     )
 }
+

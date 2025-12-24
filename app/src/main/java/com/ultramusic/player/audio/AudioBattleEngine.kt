@@ -66,6 +66,100 @@ class AudioBattleEngine @Inject constructor(
     // EQ bands state
     private val _eqBands = MutableStateFlow<List<EQBand>>(emptyList())
     val eqBands: StateFlow<List<EQBand>> = _eqBands.asStateFlow()
+
+    // ==================== ADVANCED MANUAL CONTROLS ====================
+
+    // Compressor settings
+    private val _compressorEnabled = MutableStateFlow(true)
+    val compressorEnabled: StateFlow<Boolean> = _compressorEnabled.asStateFlow()
+
+    private val _compressorThreshold = MutableStateFlow(-12f) // dB
+    val compressorThreshold: StateFlow<Float> = _compressorThreshold.asStateFlow()
+
+    private val _compressorRatio = MutableStateFlow(4f) // ratio
+    val compressorRatio: StateFlow<Float> = _compressorRatio.asStateFlow()
+
+    private val _compressorAttack = MutableStateFlow(10f) // ms
+    val compressorAttack: StateFlow<Float> = _compressorAttack.asStateFlow()
+
+    private val _compressorRelease = MutableStateFlow(100f) // ms
+    val compressorRelease: StateFlow<Float> = _compressorRelease.asStateFlow()
+
+    private val _compressorMakeupGain = MutableStateFlow(6f) // dB
+    val compressorMakeupGain: StateFlow<Float> = _compressorMakeupGain.asStateFlow()
+
+    // Limiter settings
+    private val _limiterEnabled = MutableStateFlow(true)
+    val limiterEnabled: StateFlow<Boolean> = _limiterEnabled.asStateFlow()
+
+    private val _limiterThreshold = MutableStateFlow(-1f) // dB
+    val limiterThreshold: StateFlow<Float> = _limiterThreshold.asStateFlow()
+
+    private val _limiterCeiling = MutableStateFlow(-0.1f) // dB
+    val limiterCeiling: StateFlow<Float> = _limiterCeiling.asStateFlow()
+
+    private val _limiterAttack = MutableStateFlow(1f) // ms
+    val limiterAttack: StateFlow<Float> = _limiterAttack.asStateFlow()
+
+    private val _limiterRelease = MutableStateFlow(50f) // ms
+    val limiterRelease: StateFlow<Float> = _limiterRelease.asStateFlow()
+
+    // Bass Boost advanced
+    private val _bassFrequency = MutableStateFlow(80f) // Hz - center frequency
+    val bassFrequency: StateFlow<Float> = _bassFrequency.asStateFlow()
+
+    // Stereo Widener
+    private val _stereoWidthEnabled = MutableStateFlow(false)
+    val stereoWidthEnabled: StateFlow<Boolean> = _stereoWidthEnabled.asStateFlow()
+
+    private val _stereoWidth = MutableStateFlow(100) // 0-200, 100 = normal
+    val stereoWidth: StateFlow<Int> = _stereoWidth.asStateFlow()
+
+    // Harmonic Exciter
+    private val _exciterEnabled = MutableStateFlow(false)
+    val exciterEnabled: StateFlow<Boolean> = _exciterEnabled.asStateFlow()
+
+    private val _exciterDrive = MutableStateFlow(30) // 0-100
+    val exciterDrive: StateFlow<Int> = _exciterDrive.asStateFlow()
+
+    private val _exciterMix = MutableStateFlow(50) // 0-100 dry/wet
+    val exciterMix: StateFlow<Int> = _exciterMix.asStateFlow()
+
+    // Reverb settings
+    private val _reverbEnabled = MutableStateFlow(false)
+    val reverbEnabled: StateFlow<Boolean> = _reverbEnabled.asStateFlow()
+
+    private val _reverbPreset = MutableStateFlow(0) // PresetReverb presets
+    val reverbPreset: StateFlow<Int> = _reverbPreset.asStateFlow()
+
+    private var presetReverb: PresetReverb? = null
+
+    // ==================== DANGER MODE (LIMITER BYPASS) ====================
+
+    private val _dangerModeEnabled = MutableStateFlow(false)
+    val dangerModeEnabled: StateFlow<Boolean> = _dangerModeEnabled.asStateFlow()
+
+    // ==================== PEAK dB MONITORING ====================
+
+    private val _currentPeakDb = MutableStateFlow(-60f)
+    val currentPeakDb: StateFlow<Float> = _currentPeakDb.asStateFlow()
+
+    private val _isClipping = MutableStateFlow(false)
+    val isClipping: StateFlow<Boolean> = _isClipping.asStateFlow()
+
+    // ==================== QUICK PROFILE SLOTS (A/B/C) ====================
+
+    private val _profileSlotA = MutableStateFlow<QuickProfile?>(null)
+    val profileSlotA: StateFlow<QuickProfile?> = _profileSlotA.asStateFlow()
+
+    private val _profileSlotB = MutableStateFlow<QuickProfile?>(null)
+    val profileSlotB: StateFlow<QuickProfile?> = _profileSlotB.asStateFlow()
+
+    private val _profileSlotC = MutableStateFlow<QuickProfile?>(null)
+    val profileSlotC: StateFlow<QuickProfile?> = _profileSlotC.asStateFlow()
+
+    private val _activeProfileSlot = MutableStateFlow<Char?>(null)
+    val activeProfileSlot: StateFlow<Char?> = _activeProfileSlot.asStateFlow()
     
     // ==================== INITIALIZATION ====================
     
@@ -455,7 +549,444 @@ class AudioBattleEngine @Inject constructor(
             _eqBands.value = bands
         }
     }
-    
+
+    // ==================== ADVANCED MANUAL CONTROL METHODS ====================
+
+    // ----- COMPRESSOR CONTROLS -----
+
+    fun setCompressorEnabled(enabled: Boolean) {
+        _compressorEnabled.value = enabled
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            updateDynamicsCompressor()
+        }
+    }
+
+    fun setCompressorThreshold(thresholdDb: Float) {
+        _compressorThreshold.value = thresholdDb.coerceIn(-60f, 0f)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            updateDynamicsCompressor()
+        }
+    }
+
+    fun setCompressorRatio(ratio: Float) {
+        _compressorRatio.value = ratio.coerceIn(1f, 20f)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            updateDynamicsCompressor()
+        }
+    }
+
+    fun setCompressorAttack(attackMs: Float) {
+        _compressorAttack.value = attackMs.coerceIn(0.1f, 200f)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            updateDynamicsCompressor()
+        }
+    }
+
+    fun setCompressorRelease(releaseMs: Float) {
+        _compressorRelease.value = releaseMs.coerceIn(10f, 1000f)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            updateDynamicsCompressor()
+        }
+    }
+
+    fun setCompressorMakeupGain(gainDb: Float) {
+        _compressorMakeupGain.value = gainDb.coerceIn(0f, 24f)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            updateDynamicsCompressor()
+        }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.P)
+    private fun updateDynamicsCompressor() {
+        dynamicsProcessing?.let { dp ->
+            try {
+                // Update MBC (Multi-band Compressor) for each band
+                for (band in 0 until 6) {
+                    val mbc = dp.getMbcBandByChannelIndex(0, band)
+                    mbc.isEnabled = _compressorEnabled.value
+                    mbc.attackTime = _compressorAttack.value
+                    mbc.releaseTime = _compressorRelease.value
+                    mbc.ratio = _compressorRatio.value
+                    mbc.threshold = _compressorThreshold.value
+                    mbc.postGain = _compressorMakeupGain.value
+                    dp.setMbcBandByChannelIndex(0, band, mbc)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error updating compressor", e)
+            }
+        }
+    }
+
+    // ----- LIMITER CONTROLS -----
+
+    fun setLimiterEnabled(enabled: Boolean) {
+        _limiterEnabled.value = enabled
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            updateDynamicsLimiter()
+        }
+    }
+
+    fun setLimiterThreshold(thresholdDb: Float) {
+        _limiterThreshold.value = thresholdDb.coerceIn(-12f, 0f)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            updateDynamicsLimiter()
+        }
+    }
+
+    fun setLimiterCeiling(ceilingDb: Float) {
+        _limiterCeiling.value = ceilingDb.coerceIn(-3f, 0f)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            updateDynamicsLimiter()
+        }
+    }
+
+    fun setLimiterAttack(attackMs: Float) {
+        _limiterAttack.value = attackMs.coerceIn(0.1f, 10f)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            updateDynamicsLimiter()
+        }
+    }
+
+    fun setLimiterRelease(releaseMs: Float) {
+        _limiterRelease.value = releaseMs.coerceIn(10f, 500f)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            updateDynamicsLimiter()
+        }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.P)
+    private fun updateDynamicsLimiter() {
+        dynamicsProcessing?.let { dp ->
+            try {
+                val limiter = dp.getLimiterByChannelIndex(0)
+                limiter.isEnabled = _limiterEnabled.value
+                limiter.attackTime = _limiterAttack.value
+                limiter.releaseTime = _limiterRelease.value
+                limiter.threshold = _limiterThreshold.value
+                limiter.postGain = 0f // Ceiling is handled separately
+                dp.setLimiterByChannelIndex(0, limiter)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error updating limiter", e)
+            }
+        }
+    }
+
+    // ----- BASS FREQUENCY CONTROL -----
+
+    fun setBassFrequency(frequencyHz: Float) {
+        _bassFrequency.value = frequencyHz.coerceIn(20f, 200f)
+        // Re-apply bass boost with new frequency
+        setBassBoost(_bassLevel.value)
+    }
+
+    // ----- STEREO WIDENER CONTROLS -----
+
+    fun setStereoWidthEnabled(enabled: Boolean) {
+        _stereoWidthEnabled.value = enabled
+        if (enabled) {
+            virtualizer?.enabled = true
+            virtualizer?.let {
+                if (it.strengthSupported) {
+                    // Map stereo width to virtualizer strength
+                    val strength = ((_stereoWidth.value - 100) * 10).coerceIn(0, 1000)
+                    it.setStrength(strength.toShort())
+                }
+            }
+        }
+    }
+
+    fun setStereoWidth(width: Int) {
+        _stereoWidth.value = width.coerceIn(0, 200)
+        if (_stereoWidthEnabled.value) {
+            virtualizer?.let {
+                if (it.strengthSupported) {
+                    // 0-100 = narrow to normal, 100-200 = normal to wide
+                    val strength = ((width - 100) * 10).coerceIn(0, 1000)
+                    it.setStrength(strength.toShort())
+                }
+            }
+        }
+    }
+
+    // ----- HARMONIC EXCITER CONTROLS -----
+
+    fun setExciterEnabled(enabled: Boolean) {
+        _exciterEnabled.value = enabled
+        // Exciter is implemented via EQ boost in high frequencies + slight saturation
+        if (enabled) {
+            applyExciterEffect()
+        }
+    }
+
+    fun setExciterDrive(drive: Int) {
+        _exciterDrive.value = drive.coerceIn(0, 100)
+        if (_exciterEnabled.value) {
+            applyExciterEffect()
+        }
+    }
+
+    fun setExciterMix(mix: Int) {
+        _exciterMix.value = mix.coerceIn(0, 100)
+        if (_exciterEnabled.value) {
+            applyExciterEffect()
+        }
+    }
+
+    private fun applyExciterEffect() {
+        // Exciter adds harmonics to high frequencies for "presence"
+        // We simulate this by boosting high-mid and high frequencies
+        equalizer?.let { eq ->
+            val drive = _exciterDrive.value / 100f
+            val mix = _exciterMix.value / 100f
+            val max = eq.bandLevelRange[1]
+
+            // Boost presence (3-6kHz range, typically band 3)
+            if (eq.numberOfBands > 3) {
+                val boost = (drive * mix * max * 0.5f).toInt()
+                eq.setBandLevel(3, boost.toShort().coerceAtMost(max))
+            }
+            // Boost air/brilliance (8-16kHz range, typically band 4)
+            if (eq.numberOfBands > 4) {
+                val boost = (drive * mix * max * 0.7f).toInt()
+                eq.setBandLevel(4, boost.toShort().coerceAtMost(max))
+            }
+        }
+        updateEQState()
+    }
+
+    // ----- REVERB CONTROLS -----
+
+    fun setReverbEnabled(enabled: Boolean) {
+        _reverbEnabled.value = enabled
+        presetReverb?.enabled = enabled
+    }
+
+    fun setReverbPreset(preset: Int) {
+        _reverbPreset.value = preset.coerceIn(0, 6)
+        presetReverb?.preset = preset.toShort()
+    }
+
+    fun initReverb(audioSessionId: Int) {
+        try {
+            presetReverb = PresetReverb(0, audioSessionId).apply {
+                enabled = _reverbEnabled.value
+                preset = _reverbPreset.value.toShort()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error initializing reverb", e)
+        }
+    }
+
+    // ----- DANGER MODE CONTROLS -----
+
+    /**
+     * Enable DANGER MODE - bypasses limiter for maximum output
+     * WARNING: This can cause clipping and speaker damage!
+     * Use only when you need to overpower opponent at all costs
+     */
+    fun setDangerModeEnabled(enabled: Boolean) {
+        _dangerModeEnabled.value = enabled
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            dynamicsProcessing?.let { dp ->
+                try {
+                    val limiter = dp.getLimiterByChannelIndex(0)
+                    if (enabled) {
+                        // BYPASS LIMITER - dangerous!
+                        limiter.isEnabled = false
+                    } else {
+                        // Re-enable limiter with current settings
+                        limiter.isEnabled = _limiterEnabled.value
+                        limiter.threshold = _limiterThreshold.value
+                    }
+                    dp.setLimiterByChannelIndex(0, limiter)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error toggling danger mode", e)
+                }
+            }
+        }
+    }
+
+    // ----- PEAK dB MONITORING -----
+
+    /**
+     * Update peak dB level (called from audio processing callback)
+     */
+    fun updatePeakDb(peakDb: Float) {
+        _currentPeakDb.value = peakDb
+        _isClipping.value = peakDb >= -0.5f // Clipping threshold
+    }
+
+    /**
+     * Reset peak dB monitor
+     */
+    fun resetPeakDb() {
+        _currentPeakDb.value = -60f
+        _isClipping.value = false
+    }
+
+    // ----- QUICK PROFILE SLOTS -----
+
+    /**
+     * Save current settings to a profile slot (A, B, or C)
+     */
+    fun saveToProfileSlot(slot: Char) {
+        val profile = captureCurrentProfile()
+        when (slot) {
+            'A' -> _profileSlotA.value = profile
+            'B' -> _profileSlotB.value = profile
+            'C' -> _profileSlotC.value = profile
+        }
+    }
+
+    /**
+     * Load settings from a profile slot
+     */
+    fun loadFromProfileSlot(slot: Char) {
+        val profile = when (slot) {
+            'A' -> _profileSlotA.value
+            'B' -> _profileSlotB.value
+            'C' -> _profileSlotC.value
+            else -> null
+        }
+
+        profile?.let {
+            applyQuickProfile(it)
+            _activeProfileSlot.value = slot
+        }
+    }
+
+    /**
+     * Clear a profile slot
+     */
+    fun clearProfileSlot(slot: Char) {
+        when (slot) {
+            'A' -> _profileSlotA.value = null
+            'B' -> _profileSlotB.value = null
+            'C' -> _profileSlotC.value = null
+        }
+        if (_activeProfileSlot.value == slot) {
+            _activeProfileSlot.value = null
+        }
+    }
+
+    private fun captureCurrentProfile(): QuickProfile {
+        return QuickProfile(
+            name = "Profile ${System.currentTimeMillis() % 1000}",
+            bassLevel = _bassLevel.value,
+            bassFrequency = _bassFrequency.value,
+            loudnessGain = _loudnessGain.value,
+            clarityLevel = _clarityLevel.value,
+            spatialLevel = _spatialLevel.value,
+            compressorEnabled = _compressorEnabled.value,
+            compressorThreshold = _compressorThreshold.value,
+            compressorRatio = _compressorRatio.value,
+            compressorAttack = _compressorAttack.value,
+            compressorRelease = _compressorRelease.value,
+            compressorMakeupGain = _compressorMakeupGain.value,
+            limiterEnabled = _limiterEnabled.value,
+            limiterThreshold = _limiterThreshold.value,
+            limiterCeiling = _limiterCeiling.value,
+            stereoWidthEnabled = _stereoWidthEnabled.value,
+            stereoWidth = _stereoWidth.value,
+            exciterEnabled = _exciterEnabled.value,
+            exciterDrive = _exciterDrive.value,
+            exciterMix = _exciterMix.value,
+            eqBands = _eqBands.value.map { it.currentLevel }
+        )
+    }
+
+    private fun applyQuickProfile(profile: QuickProfile) {
+        // Apply all settings from profile
+        setBassBoost(profile.bassLevel)
+        setBassFrequency(profile.bassFrequency)
+        setLoudness(profile.loudnessGain)
+        setClarity(profile.clarityLevel)
+        setVirtualizer(profile.spatialLevel)
+
+        setCompressorEnabled(profile.compressorEnabled)
+        setCompressorThreshold(profile.compressorThreshold)
+        setCompressorRatio(profile.compressorRatio)
+        setCompressorAttack(profile.compressorAttack)
+        setCompressorRelease(profile.compressorRelease)
+        setCompressorMakeupGain(profile.compressorMakeupGain)
+
+        setLimiterEnabled(profile.limiterEnabled)
+        setLimiterThreshold(profile.limiterThreshold)
+        setLimiterCeiling(profile.limiterCeiling)
+
+        setStereoWidthEnabled(profile.stereoWidthEnabled)
+        setStereoWidth(profile.stereoWidth)
+
+        setExciterEnabled(profile.exciterEnabled)
+        setExciterDrive(profile.exciterDrive)
+        setExciterMix(profile.exciterMix)
+
+        // Apply EQ bands
+        profile.eqBands.forEachIndexed { index, level ->
+            setEQBand(index, level)
+        }
+    }
+
+    // ----- RESET ALL TO DEFAULTS -----
+
+    fun resetAllToDefaults() {
+        // Reset compressor
+        _compressorEnabled.value = true
+        _compressorThreshold.value = -12f
+        _compressorRatio.value = 4f
+        _compressorAttack.value = 10f
+        _compressorRelease.value = 100f
+        _compressorMakeupGain.value = 6f
+
+        // Reset limiter
+        _limiterEnabled.value = true
+        _limiterThreshold.value = -1f
+        _limiterCeiling.value = -0.1f
+        _limiterAttack.value = 1f
+        _limiterRelease.value = 50f
+
+        // Reset bass
+        _bassLevel.value = 500
+        _bassFrequency.value = 80f
+
+        // Reset stereo
+        _stereoWidthEnabled.value = false
+        _stereoWidth.value = 100
+
+        // Reset exciter
+        _exciterEnabled.value = false
+        _exciterDrive.value = 30
+        _exciterMix.value = 50
+
+        // Reset reverb
+        _reverbEnabled.value = false
+        _reverbPreset.value = 0
+
+        // Reset main controls
+        _loudnessGain.value = 0
+        _clarityLevel.value = 50
+        _spatialLevel.value = 500
+
+        // Apply resets
+        setBassBoost(500)
+        setLoudness(0)
+        setClarity(50)
+        setVirtualizer(500)
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            updateDynamicsCompressor()
+            updateDynamicsLimiter()
+        }
+
+        // Reset EQ to flat
+        equalizer?.let { eq ->
+            for (band in 0 until eq.numberOfBands) {
+                eq.setBandLevel(band.toShort(), 0)
+            }
+        }
+        updateEQState()
+    }
+
     // ==================== BATTLE PRESETS ====================
     
     /**
@@ -666,4 +1197,32 @@ data class BattlePreset(
     val clarityLevel: Int,   // 0-100
     val spatialLevel: Int,   // 0-1000
     val eqBands: List<Int>   // millibels per band
+)
+
+/**
+ * Quick Profile for instant A/B/C slot switching during battles
+ * Stores ALL current audio settings for instant recall
+ */
+data class QuickProfile(
+    val name: String,
+    val bassLevel: Int,
+    val bassFrequency: Float,
+    val loudnessGain: Int,
+    val clarityLevel: Int,
+    val spatialLevel: Int,
+    val compressorEnabled: Boolean,
+    val compressorThreshold: Float,
+    val compressorRatio: Float,
+    val compressorAttack: Float,
+    val compressorRelease: Float,
+    val compressorMakeupGain: Float,
+    val limiterEnabled: Boolean,
+    val limiterThreshold: Float,
+    val limiterCeiling: Float,
+    val stereoWidthEnabled: Boolean,
+    val stereoWidth: Int,
+    val exciterEnabled: Boolean,
+    val exciterDrive: Int,
+    val exciterMix: Int,
+    val eqBands: List<Int>
 )

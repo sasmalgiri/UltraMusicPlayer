@@ -45,8 +45,12 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -59,6 +63,8 @@ import com.ultramusic.player.data.BrowseItem
 import com.ultramusic.player.data.MusicFolder
 import com.ultramusic.player.data.Song
 import com.ultramusic.player.ui.MainViewModel
+import com.ultramusic.player.ui.components.EnhancedFolderBrowser
+import com.ultramusic.player.ui.components.FolderViewMode
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -72,6 +78,19 @@ fun FolderBrowserScreen(
     val currentPath by viewModel.currentFolderPath.collectAsState()
     val browseItems by viewModel.browseItems.collectAsState()
     val breadcrumbs by viewModel.breadcrumbs.collectAsState()
+
+    // Enhanced folder browser state
+    val enhancedFolders by viewModel.enhancedFolders.collectAsState()
+    val folderShortcuts by viewModel.folderShortcuts.collectAsState()
+    val folderViewMode by viewModel.folderViewMode.collectAsState()
+
+    // Toggle between basic and enhanced browser
+    var useEnhancedBrowser by remember { mutableStateOf(true) }
+
+    // Load enhanced folders on first launch
+    LaunchedEffect(Unit) {
+        viewModel.loadEnhancedFolders()
+    }
     
     Scaffold(
         topBar = {
@@ -134,75 +153,94 @@ fun FolderBrowserScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            // Breadcrumb navigation
-            if (breadcrumbs.size > 1) {
-                BreadcrumbBar(
-                    breadcrumbs = breadcrumbs,
-                    onBreadcrumbClick = { path -> viewModel.navigateToPath(path) }
+            // Use Enhanced Folder Browser when enabled and folders are available
+            if (useEnhancedBrowser && enhancedFolders.isNotEmpty()) {
+                EnhancedFolderBrowser(
+                    folders = enhancedFolders,
+                    currentPath = currentPath,
+                    shortcuts = folderShortcuts,
+                    viewMode = folderViewMode,
+                    onViewModeChange = { viewModel.setFolderViewMode(it) },
+                    onFolderClick = { viewModel.openEnhancedFolder(it) },
+                    onPlayFolder = { viewModel.playEnhancedFolder(it) },
+                    onToggleShortcut = { viewModel.toggleFolderShortcut(it) },
+                    onNavigateToPath = { viewModel.navigateToPath(it) },
+                    onNavigateUp = { viewModel.navigateUp() },
+                    modifier = Modifier.fillMaxSize()
                 )
-            }
-            
-            // Content
-            when {
-                uiState.isLoading -> {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            CircularProgressIndicator()
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Text("Scanning folders...")
+            } else {
+                // Fallback to basic browser
+                // Breadcrumb navigation
+                if (breadcrumbs.size > 1) {
+                    BreadcrumbBar(
+                        breadcrumbs = breadcrumbs,
+                        onBreadcrumbClick = { path -> viewModel.navigateToPath(path) }
+                    )
+                }
+
+                // Content
+                when {
+                    uiState.isLoading -> {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                CircularProgressIndicator()
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Text("Scanning folders...")
+                            }
                         }
                     }
-                }
-                
-                browseItems.isEmpty() -> {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(
-                                imageVector = Icons.Default.FolderOpen,
-                                contentDescription = null,
-                                modifier = Modifier.size(64.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Text(
-                                text = "This folder is empty",
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+
+                    browseItems.isEmpty() -> {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Icon(
+                                    imageVector = Icons.Default.FolderOpen,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(64.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Text(
+                                    text = "This folder is empty",
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
                     }
-                }
-                
-                else -> {
-                    LazyColumn(
-                        contentPadding = PaddingValues(
-                            start = 16.dp,
-                            end = 16.dp,
-                            top = 8.dp,
-                            bottom = if (playbackState.currentSong != null) 100.dp else 16.dp
-                        ),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        items(browseItems) { item ->
-                            when (item) {
-                                is BrowseItem.Folder -> {
-                                    FolderCard(
-                                        folder = item.folder,
-                                        onClick = { viewModel.openFolder(item.folder.path) }
-                                    )
-                                }
-                                is BrowseItem.SongItem -> {
-                                    SongCard(
-                                        song = item.song,
-                                        isPlaying = playbackState.currentSong?.id == item.song.id,
-                                        onClick = { viewModel.playSongFromFolder(item.song) }
-                                    )
+
+                    else -> {
+                        LazyColumn(
+                            contentPadding = PaddingValues(
+                                start = 16.dp,
+                                end = 16.dp,
+                                top = 8.dp,
+                                bottom = if (playbackState.currentSong != null) 100.dp else 16.dp
+                            ),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            items(browseItems) { item ->
+                                when (item) {
+                                    is BrowseItem.Folder -> {
+                                        FolderCard(
+                                            folder = item.folder,
+                                            onClick = { viewModel.openFolder(item.folder.path) }
+                                        )
+                                    }
+
+                                    is BrowseItem.SongItem -> {
+                                        SongCard(
+                                            song = item.song,
+                                            isPlaying = playbackState.currentSong?.id == item.song.id,
+                                            onClick = { viewModel.playSongFromFolder(item.song) }
+                                        )
+                                    }
                                 }
                             }
                         }

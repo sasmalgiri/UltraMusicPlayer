@@ -61,6 +61,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -80,10 +81,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.ultramusic.player.audio.BeatMarker
 import com.ultramusic.player.data.AudioPreset
 import com.ultramusic.player.ui.MainViewModel
 import com.ultramusic.player.ui.components.PresetPanel
 import com.ultramusic.player.ui.components.SpeedPitchControl
+import com.ultramusic.player.ui.components.WaveformVisualizer
 import com.ultramusic.player.ui.theme.UltraGradientEnd
 import com.ultramusic.player.ui.theme.UltraGradientStart
 
@@ -95,14 +98,28 @@ fun NowPlayingScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val playbackState by viewModel.playbackState.collectAsState()
-    
+
+    // Waveform and beat detection state
+    val waveformData by viewModel.currentWaveform.collectAsState()
+    val beatMarkers by viewModel.currentBeatMarkers.collectAsState()
+    val estimatedBpm by viewModel.estimatedBpm.collectAsState()
+    val isExtractingWaveform by viewModel.isExtractingWaveform.collectAsState()
+
+    // Show waveform panel state
+    var showWaveformPanel by remember { mutableStateOf(true) }
+
     val song = playbackState.currentSong
     
     if (song == null) {
         onNavigateBack()
         return
     }
-    
+
+    // Analyze song for waveform and beats when song changes
+    LaunchedEffect(song.id) {
+        viewModel.analyzeCurrentSong()
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -231,38 +248,79 @@ fun NowPlayingScreen(
                     }
                 }
                 
-                Spacer(modifier = Modifier.height(24.dp))
-                
-                // Progress Slider
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    Slider(
-                        value = playbackState.progress,
-                        onValueChange = { viewModel.seekToPercent(it) },
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Waveform Visualizer with A-B Loop and Beat Markers
+                if (waveformData.isNotEmpty()) {
+                    WaveformVisualizer(
+                        waveformData = waveformData,
+                        currentPosition = playbackState.progress,
+                        durationMs = playbackState.duration,
+                        loopStartMs = playbackState.abLoopStart,
+                        loopEndMs = playbackState.abLoopEnd,
+                        isLooping = playbackState.isLooping,
+                        onSeek = { viewModel.seekToPercent(it) },
+                        onLoopStartChange = { viewModel.setWaveformLoopStart(it) },
+                        onLoopEndChange = { viewModel.setWaveformLoopEnd(it) },
+                        onClearLoop = { viewModel.clearWaveformLoop() },
+                        beatMarkers = beatMarkers,
+                        estimatedBpm = estimatedBpm,
+                        showBeatMarkers = true,
                         modifier = Modifier.fillMaxWidth(),
-                        colors = SliderDefaults.colors(
-                            thumbColor = MaterialTheme.colorScheme.primary,
-                            activeTrackColor = MaterialTheme.colorScheme.primary
-                        )
+                        height = 120.dp
                     )
-                    
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            text = playbackState.positionFormatted,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                } else {
+                    // Fallback to simple slider while loading
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        if (isExtractingWaveform) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                androidx.compose.material3.CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    strokeWidth = 2.dp
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Analyzing waveform...",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                        }
+
+                        Slider(
+                            value = playbackState.progress,
+                            onValueChange = { viewModel.seekToPercent(it) },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = SliderDefaults.colors(
+                                thumbColor = MaterialTheme.colorScheme.primary,
+                                activeTrackColor = MaterialTheme.colorScheme.primary
+                            )
                         )
-                        Text(
-                            text = playbackState.durationFormatted,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = playbackState.positionFormatted,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = playbackState.durationFormatted,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
-                
-                Spacer(modifier = Modifier.height(16.dp))
+
+                Spacer(modifier = Modifier.height(12.dp))
                 
                 // Main Playback Controls
                 Row(

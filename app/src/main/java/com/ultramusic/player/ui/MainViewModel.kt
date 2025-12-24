@@ -36,6 +36,10 @@ import com.ultramusic.player.audio.AudioQualityManager
 import com.ultramusic.player.audio.ExtremeNoiseVoiceCapture
 import com.ultramusic.player.audio.ExtremeCaptureState
 import com.ultramusic.player.audio.MusicController
+import com.ultramusic.player.audio.WaveformExtractor
+import com.ultramusic.player.audio.BeatDetector
+import com.ultramusic.player.audio.BeatMarker
+import android.net.Uri
 import com.ultramusic.player.audio.NoiseLevel
 import com.ultramusic.player.audio.VoiceSearchManager
 import com.ultramusic.player.audio.VoiceSearchState
@@ -53,6 +57,8 @@ import com.ultramusic.player.data.Song
 import com.ultramusic.player.data.SongMetadataManager
 import com.ultramusic.player.data.SortOption
 import com.ultramusic.player.PermissionState
+import com.ultramusic.player.ui.components.FolderItem
+import com.ultramusic.player.ui.components.FolderViewMode
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -120,7 +126,9 @@ class MainViewModel @Inject constructor(
     val localBattleAnalyzer: com.ultramusic.player.core.LocalBattleAnalyzer,
     val battleArmory: com.ultramusic.player.core.BattleArmory,
     val autoClipDetector: com.ultramusic.player.core.AutoClipDetector,
-    val grokAIService: com.ultramusic.player.ai.GrokAIService
+    val grokAIService: com.ultramusic.player.ai.GrokAIService,
+    private val waveformExtractor: WaveformExtractor,
+    private val beatDetector: BeatDetector
 ) : ViewModel() {
     
     private val _uiState = MutableStateFlow(MainUiState())
@@ -225,7 +233,46 @@ class MainViewModel @Inject constructor(
     val battleSpatial: StateFlow<Int> = audioBattleEngine.spatialLevel
     val battleEQBands: StateFlow<List<EQBand>> = audioBattleEngine.eqBands
     val battlePreset: StateFlow<BattlePreset?> = audioBattleEngine.currentPreset
-    
+
+    // Advanced manual controls
+    val compressorEnabled: StateFlow<Boolean> = audioBattleEngine.compressorEnabled
+    val compressorThreshold: StateFlow<Float> = audioBattleEngine.compressorThreshold
+    val compressorRatio: StateFlow<Float> = audioBattleEngine.compressorRatio
+    val compressorAttack: StateFlow<Float> = audioBattleEngine.compressorAttack
+    val compressorRelease: StateFlow<Float> = audioBattleEngine.compressorRelease
+    val compressorMakeupGain: StateFlow<Float> = audioBattleEngine.compressorMakeupGain
+
+    val limiterEnabled: StateFlow<Boolean> = audioBattleEngine.limiterEnabled
+    val limiterThreshold: StateFlow<Float> = audioBattleEngine.limiterThreshold
+    val limiterCeiling: StateFlow<Float> = audioBattleEngine.limiterCeiling
+    val limiterAttack: StateFlow<Float> = audioBattleEngine.limiterAttack
+    val limiterRelease: StateFlow<Float> = audioBattleEngine.limiterRelease
+
+    val bassFrequency: StateFlow<Float> = audioBattleEngine.bassFrequency
+
+    val stereoWidthEnabled: StateFlow<Boolean> = audioBattleEngine.stereoWidthEnabled
+    val stereoWidth: StateFlow<Int> = audioBattleEngine.stereoWidth
+
+    val exciterEnabled: StateFlow<Boolean> = audioBattleEngine.exciterEnabled
+    val exciterDrive: StateFlow<Int> = audioBattleEngine.exciterDrive
+    val exciterMix: StateFlow<Int> = audioBattleEngine.exciterMix
+
+    val reverbEnabled: StateFlow<Boolean> = audioBattleEngine.reverbEnabled
+    val reverbPreset: StateFlow<Int> = audioBattleEngine.reverbPreset
+
+    // Danger mode
+    val dangerModeEnabled: StateFlow<Boolean> = audioBattleEngine.dangerModeEnabled
+
+    // Peak dB monitoring
+    val currentPeakDb: StateFlow<Float> = audioBattleEngine.currentPeakDb
+    val isClipping: StateFlow<Boolean> = audioBattleEngine.isClipping
+
+    // Quick profile slots
+    val profileSlotA: StateFlow<com.ultramusic.player.audio.QuickProfile?> = audioBattleEngine.profileSlotA
+    val profileSlotB: StateFlow<com.ultramusic.player.audio.QuickProfile?> = audioBattleEngine.profileSlotB
+    val profileSlotC: StateFlow<com.ultramusic.player.audio.QuickProfile?> = audioBattleEngine.profileSlotC
+    val activeProfileSlot: StateFlow<Char?> = audioBattleEngine.activeProfileSlot
+
     // ==================== BATTLE INTELLIGENCE ====================
     
     val battleIntelListening: StateFlow<Boolean> = battleIntelligence.isListening
@@ -271,6 +318,44 @@ class MainViewModel @Inject constructor(
 
     val activeTactic: StateFlow<WarfareTactic?> = frequencyWarfare.activeTactic
     val isWarfareActive: StateFlow<Boolean> = frequencyWarfare.isActive
+
+    // ==================== WAVEFORM ====================
+
+    private val _currentWaveform = MutableStateFlow<List<Float>>(emptyList())
+    val currentWaveform: StateFlow<List<Float>> = _currentWaveform.asStateFlow()
+
+    val isExtractingWaveform: StateFlow<Boolean> = waveformExtractor.isExtracting
+    val waveformProgress: StateFlow<Float> = waveformExtractor.extractionProgress
+
+    // A-B Loop state
+    private val _loopStartMs = MutableStateFlow<Long?>(null)
+    val loopStartMs: StateFlow<Long?> = _loopStartMs.asStateFlow()
+
+    private val _loopEndMs = MutableStateFlow<Long?>(null)
+    val loopEndMs: StateFlow<Long?> = _loopEndMs.asStateFlow()
+
+    private val _isLoopEnabled = MutableStateFlow(false)
+    val isLoopEnabled: StateFlow<Boolean> = _isLoopEnabled.asStateFlow()
+
+    // ==================== BEAT DETECTION ====================
+
+    private val _currentBeatMarkers = MutableStateFlow<List<BeatMarker>>(emptyList())
+    val currentBeatMarkers: StateFlow<List<BeatMarker>> = _currentBeatMarkers.asStateFlow()
+
+    val isDetectingBeats: StateFlow<Boolean> = beatDetector.isDetecting
+    val beatDetectionProgress: StateFlow<Float> = beatDetector.detectionProgress
+    val estimatedBpm: StateFlow<Float> = beatDetector.estimatedBpm
+
+    // ==================== ENHANCED FOLDER BROWSER ====================
+
+    private val _folderViewMode = MutableStateFlow(FolderViewMode.LINEAR)
+    val folderViewMode: StateFlow<FolderViewMode> = _folderViewMode.asStateFlow()
+
+    private val _enhancedFolders = MutableStateFlow<List<FolderItem>>(emptyList())
+    val enhancedFolders: StateFlow<List<FolderItem>> = _enhancedFolders.asStateFlow()
+
+    private val _folderShortcuts = MutableStateFlow<List<FolderItem>>(emptyList())
+    val folderShortcuts: StateFlow<List<FolderItem>> = _folderShortcuts.asStateFlow()
 
     // ==================== DOMINANT MODE (DJ MODE) ====================
 
@@ -513,7 +598,114 @@ class MainViewModel @Inject constructor(
     fun goNuclear() {
         audioBattleEngine.goNuclear()
     }
-    
+
+    // ==================== ADVANCED MANUAL CONTROLS ====================
+
+    // Compressor controls
+    fun setCompressorEnabled(enabled: Boolean) {
+        audioBattleEngine.setCompressorEnabled(enabled)
+    }
+
+    fun setCompressorThreshold(thresholdDb: Float) {
+        audioBattleEngine.setCompressorThreshold(thresholdDb)
+    }
+
+    fun setCompressorRatio(ratio: Float) {
+        audioBattleEngine.setCompressorRatio(ratio)
+    }
+
+    fun setCompressorAttack(attackMs: Float) {
+        audioBattleEngine.setCompressorAttack(attackMs)
+    }
+
+    fun setCompressorRelease(releaseMs: Float) {
+        audioBattleEngine.setCompressorRelease(releaseMs)
+    }
+
+    fun setCompressorMakeupGain(gainDb: Float) {
+        audioBattleEngine.setCompressorMakeupGain(gainDb)
+    }
+
+    // Limiter controls
+    fun setLimiterEnabled(enabled: Boolean) {
+        audioBattleEngine.setLimiterEnabled(enabled)
+    }
+
+    fun setLimiterThreshold(thresholdDb: Float) {
+        audioBattleEngine.setLimiterThreshold(thresholdDb)
+    }
+
+    fun setLimiterCeiling(ceilingDb: Float) {
+        audioBattleEngine.setLimiterCeiling(ceilingDb)
+    }
+
+    fun setLimiterAttack(attackMs: Float) {
+        audioBattleEngine.setLimiterAttack(attackMs)
+    }
+
+    fun setLimiterRelease(releaseMs: Float) {
+        audioBattleEngine.setLimiterRelease(releaseMs)
+    }
+
+    // Bass frequency control
+    fun setBassFrequency(frequencyHz: Float) {
+        audioBattleEngine.setBassFrequency(frequencyHz)
+    }
+
+    // Stereo widener controls
+    fun setStereoWidthEnabled(enabled: Boolean) {
+        audioBattleEngine.setStereoWidthEnabled(enabled)
+    }
+
+    fun setStereoWidth(width: Int) {
+        audioBattleEngine.setStereoWidth(width)
+    }
+
+    // Harmonic exciter controls
+    fun setExciterEnabled(enabled: Boolean) {
+        audioBattleEngine.setExciterEnabled(enabled)
+    }
+
+    fun setExciterDrive(drive: Int) {
+        audioBattleEngine.setExciterDrive(drive)
+    }
+
+    fun setExciterMix(mix: Int) {
+        audioBattleEngine.setExciterMix(mix)
+    }
+
+    // Reverb controls
+    fun setReverbEnabled(enabled: Boolean) {
+        audioBattleEngine.setReverbEnabled(enabled)
+    }
+
+    fun setReverbPreset(preset: Int) {
+        audioBattleEngine.setReverbPreset(preset)
+    }
+
+    // Reset all effects to defaults
+    fun resetAllAudioEffects() {
+        audioBattleEngine.resetAllToDefaults()
+    }
+
+    // Danger mode control
+    fun setDangerModeEnabled(enabled: Boolean) {
+        audioBattleEngine.setDangerModeEnabled(enabled)
+    }
+
+    // Quick profile slot controls
+    fun saveToProfileSlot(slot: Char) {
+        audioBattleEngine.saveToProfileSlot(slot)
+    }
+
+    fun loadFromProfileSlot(slot: Char) {
+        audioBattleEngine.loadFromProfileSlot(slot)
+    }
+
+    fun clearProfileSlot(slot: Char) {
+        audioBattleEngine.clearProfileSlot(slot)
+    }
+
     // ==================== BATTLE INTELLIGENCE ====================
     
     /**
@@ -1477,7 +1669,273 @@ class MainViewModel @Inject constructor(
     fun setLoopStart() = setABLoopStart()
     fun setLoopEnd() = setABLoopEnd()
     fun clearLoop() = clearABLoop()
-    
+
+    // ==================== WAVEFORM ====================
+
+    /**
+     * Extract waveform for current song
+     */
+    fun extractWaveformForCurrentSong() {
+        val currentSong = playbackState.value.currentSong ?: return
+        viewModelScope.launch {
+            val uri = Uri.parse(currentSong.path)
+            val waveform = waveformExtractor.extractWaveform(
+                songId = currentSong.id,
+                uri = uri,
+                numSamples = 200
+            )
+            _currentWaveform.value = waveform
+        }
+    }
+
+    /**
+     * Extract waveform for a specific song
+     */
+    fun extractWaveform(song: Song) {
+        viewModelScope.launch {
+            val uri = Uri.parse(song.path)
+            val waveform = waveformExtractor.extractWaveform(
+                songId = song.id,
+                uri = uri,
+                numSamples = 200
+            )
+            _currentWaveform.value = waveform
+        }
+    }
+
+    /**
+     * Get cached waveform if available
+     */
+    fun getCachedWaveform(songId: Long): List<Float>? {
+        return waveformExtractor.getCachedWaveform(songId)
+    }
+
+    /**
+     * Set A-B loop points from waveform
+     */
+    fun setWaveformLoopStart(positionMs: Long) {
+        _loopStartMs.value = positionMs
+        if (_loopEndMs.value != null) {
+            musicController.setLoopPoints(positionMs, _loopEndMs.value!!)
+            _isLoopEnabled.value = true
+        }
+    }
+
+    fun setWaveformLoopEnd(positionMs: Long) {
+        _loopEndMs.value = positionMs
+        if (_loopStartMs.value != null) {
+            musicController.setLoopPoints(_loopStartMs.value!!, positionMs)
+            _isLoopEnabled.value = true
+        }
+    }
+
+    fun clearWaveformLoop() {
+        _loopStartMs.value = null
+        _loopEndMs.value = null
+        _isLoopEnabled.value = false
+        musicController.clearABLoop()
+    }
+
+    /**
+     * Seek to position in waveform (0-1)
+     */
+    fun seekToWaveformPosition(position: Float) {
+        val duration = playbackState.value.duration
+        musicController.seekTo((position * duration).toLong())
+    }
+
+    // ==================== BEAT DETECTION ====================
+
+    /**
+     * Detect beats for current song
+     */
+    fun detectBeatsForCurrentSong() {
+        val currentSong = playbackState.value.currentSong ?: return
+        viewModelScope.launch {
+            val uri = Uri.parse(currentSong.path)
+            val beats = beatDetector.detectBeats(
+                songId = currentSong.id,
+                uri = uri
+            )
+            _currentBeatMarkers.value = beats
+        }
+    }
+
+    /**
+     * Detect beats for a specific song
+     */
+    fun detectBeats(song: Song) {
+        viewModelScope.launch {
+            val uri = Uri.parse(song.path)
+            val beats = beatDetector.detectBeats(
+                songId = song.id,
+                uri = uri
+            )
+            _currentBeatMarkers.value = beats
+        }
+    }
+
+    /**
+     * Get cached beats if available
+     */
+    fun getCachedBeats(songId: Long): List<BeatMarker>? {
+        return beatDetector.getCachedBeats(songId)
+    }
+
+    /**
+     * Quick BPM estimation without full beat detection
+     */
+    fun estimateBpmForSong(song: Song, onResult: (Float) -> Unit) {
+        viewModelScope.launch {
+            val uri = Uri.parse(song.path)
+            val bpm = beatDetector.estimateBpm(uri)
+            onResult(bpm)
+        }
+    }
+
+    /**
+     * Extract waveform and detect beats together for current song
+     */
+    fun analyzeCurrentSong() {
+        val currentSong = playbackState.value.currentSong ?: return
+        viewModelScope.launch {
+            val uri = Uri.parse(currentSong.path)
+
+            // Extract waveform
+            val waveform = waveformExtractor.extractWaveform(
+                songId = currentSong.id,
+                uri = uri,
+                numSamples = 200
+            )
+            _currentWaveform.value = waveform
+
+            // Detect beats
+            val beats = beatDetector.detectBeats(
+                songId = currentSong.id,
+                uri = uri
+            )
+            _currentBeatMarkers.value = beats
+        }
+    }
+
+    // ==================== ENHANCED FOLDER BROWSER ====================
+
+    /**
+     * Set folder view mode (hierarchical or linear)
+     */
+    fun setFolderViewMode(mode: FolderViewMode) {
+        _folderViewMode.value = mode
+    }
+
+    /**
+     * Toggle folder view mode
+     */
+    fun toggleFolderViewMode() {
+        _folderViewMode.value = when (_folderViewMode.value) {
+            FolderViewMode.HIERARCHICAL -> FolderViewMode.LINEAR
+            FolderViewMode.LINEAR -> FolderViewMode.HIERARCHICAL
+        }
+    }
+
+    /**
+     * Load enhanced folder structure
+     */
+    fun loadEnhancedFolders() {
+        viewModelScope.launch {
+            val songs = _uiState.value.songs
+            val folderMap = songs.groupBy { song ->
+                song.path.substringBeforeLast("/")
+            }
+
+            val folderItems = folderMap.map { (path, songsInFolder) ->
+                val name = path.substringAfterLast("/").ifEmpty { "Root" }
+                val parentPath = path.substringBeforeLast("/", "").ifEmpty { null }
+                FolderItem(
+                    path = path,
+                    name = name,
+                    songCount = songsInFolder.size,
+                    parentPath = parentPath
+                )
+            }.sortedBy { it.name.lowercase() }
+
+            // Build hierarchical structure
+            val hierarchicalFolders = buildHierarchicalFolders(folderItems)
+            _enhancedFolders.value = hierarchicalFolders
+        }
+    }
+
+    /**
+     * Build hierarchical folder structure from flat list
+     */
+    private fun buildHierarchicalFolders(folders: List<FolderItem>): List<FolderItem> {
+        // Group folders by parent path
+        val foldersByParent = folders.groupBy { it.parentPath }
+
+        // Find root folders (no parent or parent not in our list)
+        val allPaths = folders.map { it.path }.toSet()
+        val rootFolders = folders.filter { folder ->
+            folder.parentPath == null || folder.parentPath !in allPaths
+        }
+
+        // Recursively attach subfolders
+        fun attachSubfolders(folder: FolderItem): FolderItem {
+            val subfolders = foldersByParent[folder.path]?.map { attachSubfolders(it) } ?: emptyList()
+            return folder.copy(subFolders = subfolders)
+        }
+
+        return rootFolders.map { attachSubfolders(it) }
+    }
+
+    /**
+     * Add folder to shortcuts
+     */
+    fun addFolderShortcut(folder: FolderItem) {
+        val current = _folderShortcuts.value.toMutableList()
+        if (current.none { it.path == folder.path }) {
+            current.add(folder.copy(isShortcut = true))
+            _folderShortcuts.value = current
+        }
+    }
+
+    /**
+     * Remove folder from shortcuts
+     */
+    fun removeFolderShortcut(folder: FolderItem) {
+        _folderShortcuts.value = _folderShortcuts.value.filter { it.path != folder.path }
+    }
+
+    /**
+     * Toggle folder shortcut
+     */
+    fun toggleFolderShortcut(folder: FolderItem) {
+        if (_folderShortcuts.value.any { it.path == folder.path }) {
+            removeFolderShortcut(folder)
+        } else {
+            addFolderShortcut(folder)
+        }
+    }
+
+    /**
+     * Play all songs in a folder
+     */
+    fun playEnhancedFolder(folder: FolderItem) {
+        val songs = _uiState.value.songs.filter { song ->
+            song.path.startsWith(folder.path)
+        }
+        if (songs.isNotEmpty()) {
+            musicController.playSong(songs.first(), songs)
+        }
+    }
+
+    /**
+     * Navigate to folder and show its songs
+     */
+    fun openEnhancedFolder(folder: FolderItem) {
+        _currentFolderPath.value = folder.path
+        updateFolderContents(folder.path)
+        _breadcrumbs.value = folderRepository.getBreadcrumbs(folder.path)
+    }
+
     // Toggle repeat mode (0=off, 1=all, 2=one)
     fun toggleRepeat() {
         musicController.toggleRepeatMode()

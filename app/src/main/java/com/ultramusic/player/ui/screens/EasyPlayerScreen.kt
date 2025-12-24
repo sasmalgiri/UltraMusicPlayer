@@ -240,7 +240,7 @@ private fun QuickSearchBar(
                     ) 
                 },
                 leadingIcon = {
-                    Icon(Icons.Default.Search, null, tint = MaterialTheme.colorScheme.primary)
+                    Icon(Icons.Default.Search, contentDescription = "Search", tint = MaterialTheme.colorScheme.primary)
                 },
                 trailingIcon = {
                     Row {
@@ -534,7 +534,7 @@ private fun PlaylistTrackItem(
                             modifier = Modifier.size(44.dp)
                         )
                     } else {
-                        Icon(Icons.Default.MusicNote, null)
+                        Icon(Icons.Default.MusicNote, contentDescription = "No album art")
                     }
                 }
                 
@@ -787,8 +787,8 @@ private fun NowPlayingSection(
                     )
                 ) {
                     Icon(
-                        if (playbackState.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        "Play/Pause",
+                        imageVector = if (playbackState.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                        contentDescription = if (playbackState.isPlaying) "Pause" else "Play",
                         modifier = Modifier.size(32.dp)
                     )
                 }
