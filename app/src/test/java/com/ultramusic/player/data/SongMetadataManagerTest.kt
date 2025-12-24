@@ -114,8 +114,8 @@ class SongMetadataManagerTest {
 
         val normalized = metadataManager.normalizeSong(song)
 
-        assertThat(normalized.normalizedTitle).doesNotStartWith(" ")
-        assertThat(normalized.normalizedTitle).doesNotEndWith(" ")
+        assertThat(normalized.normalizedTitle.startsWith(" ")).isFalse()
+        assertThat(normalized.normalizedTitle.endsWith(" ")).isFalse()
     }
 
     // ==================== POPULAR SONG MATCHING TESTS ====================
@@ -305,7 +305,8 @@ class SongMetadataManagerTest {
 
         assertThat(normalized.originalTitle).isEqualTo("Test Song")
         assertThat(normalized.normalizedTitle).isNotEmpty()
-        assertThat(normalized.confidence).isIn(0f..1f)
+        assertThat(normalized.confidence).isAtLeast(0f)
+        assertThat(normalized.confidence).isAtMost(1f)
         assertThat(normalized.matchMethod).isNotNull()
         assertThat(normalized.aliases).isNotNull()
     }

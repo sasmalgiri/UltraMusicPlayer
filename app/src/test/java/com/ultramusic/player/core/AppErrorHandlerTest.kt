@@ -292,7 +292,7 @@ class AppErrorHandlerTest {
         Thread.sleep(10) // Small delay
         val duration = errorHandler.endTiming("TestOperation")
 
-        assertThat(duration).isAtLeast(0)
+        assertThat(duration).isAtLeast(0L)
     }
 
     @Test
@@ -342,7 +342,7 @@ class AppErrorHandlerTest {
         val summary = errorHandler.getPerformanceSummary()
         val metric = summary["TimedOp"]
 
-        assertThat(metric?.totalDurationMs).isAtLeast(0)
+        assertThat(metric?.totalDurationMs).isAtLeast(0L)
     }
 
     // ==================== CRASH REPORT TESTS ====================
@@ -381,7 +381,7 @@ class AppErrorHandlerTest {
         errorHandler.handleException(RuntimeException("Test"), "TestContext")
 
         val error = errorHandler.lastError.value!!
-        assertThat(error.timestamp).isGreaterThan(0)
+        assertThat(error.timestamp).isGreaterThan(0L)
         assertThat(error.context).isEqualTo("TestContext")
         assertThat(error.message).isNotEmpty()
         assertThat(error.stackTrace).isNotEmpty()
@@ -396,7 +396,7 @@ class AppErrorHandlerTest {
         errorHandler.logInfo("TestTag", "Test message")
 
         val entry = errorHandler.getRecentLogs().first()
-        assertThat(entry.timestamp).isGreaterThan(0)
+        assertThat(entry.timestamp).isGreaterThan(0L)
         assertThat(entry.level).isNotNull()
         assertThat(entry.tag).isEqualTo("TestTag")
         assertThat(entry.message).isEqualTo("Test message")
