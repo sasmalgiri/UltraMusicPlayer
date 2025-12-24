@@ -97,3 +97,10 @@ obj/
 # Secrets
 secrets.properties
 *.secret
+
+# Build artifacts
+*.apk
+*.zip
+nul
+*.png
+bugreport-*
