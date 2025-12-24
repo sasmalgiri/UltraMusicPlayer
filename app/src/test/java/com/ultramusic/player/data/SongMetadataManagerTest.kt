@@ -13,6 +13,9 @@ import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Before
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 
 /**
  * Unit tests for SongMetadataManager
@@ -20,6 +23,8 @@ import org.junit.Test
  * Tests title normalization, metadata cleaning, fuzzy matching,
  * and popular song database lookups.
  */
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [33])
 @OptIn(ExperimentalCoroutinesApi::class)
 class SongMetadataManagerTest {
 

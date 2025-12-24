@@ -1,14 +1,39 @@
 package com.ultramusic.player
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.viewModels
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -32,22 +57,203 @@ import com.ultramusic.player.ui.screens.VoiceSearchScreen
 import com.ultramusic.player.ui.theme.UltraMusicPlayerTheme
 import dagger.hilt.android.AndroidEntryPoint
 
+/**
+ * Permission state for storage/audio access
+ */
+enum class PermissionState {
+    UNKNOWN,
+    GRANTED,
+    DENIED
+}
+
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+
+    private val viewModel: MainViewModel by viewModels()
+
+    // Permission launcher for audio/storage access - AUTO-SCAN on grant!
+    private val requestPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            viewModel.onPermissionGranted()
+            viewModel.loadMusic()  // AUTO-SCAN after permission granted!
+        } else {
+            viewModel.onPermissionDenied()
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        
+
+        // Check and request permission IMMEDIATELY on launch
+        checkAndRequestPermission()
+
         setContent {
             UltraMusicPlayerTheme {
+                val permissionState by viewModel.permissionState.collectAsState()
+                val isScanning by viewModel.isScanning.collectAsState()
+
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    UltraMusicNavigation()
+                    when {
+                        permissionState == PermissionState.GRANTED && isScanning -> {
+                            // Show scanning screen while loading music
+                            ScanningScreen()
+                        }
+                        permissionState == PermissionState.GRANTED -> {
+                            // Permission granted, show main app
+                            UltraMusicNavigation()
+                        }
+                        permissionState == PermissionState.DENIED -> {
+                            // Permission denied, show request screen
+                            PermissionRequestScreen(
+                                onRequestPermission = { requestStoragePermission() }
+                            )
+                        }
+                        else -> {
+                            // Checking permission state
+                            ScanningScreen()
+                        }
+                    }
                 }
             }
         }
+    }
+
+    private fun checkAndRequestPermission() {
+        val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            Manifest.permission.READ_MEDIA_AUDIO
+        } else {
+            Manifest.permission.READ_EXTERNAL_STORAGE
+        }
+
+        when {
+            ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED -> {
+                // Permission already granted - AUTO-SCAN immediately!
+                viewModel.onPermissionGranted()
+                viewModel.loadMusic()
+            }
+            else -> {
+                // Request permission
+                requestPermissionLauncher.launch(permission)
+            }
+        }
+    }
+
+    private fun requestStoragePermission() {
+        val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            Manifest.permission.READ_MEDIA_AUDIO
+        } else {
+            Manifest.permission.READ_EXTERNAL_STORAGE
+        }
+        requestPermissionLauncher.launch(permission)
+    }
+}
+
+/**
+ * Screen shown while scanning for music
+ */
+@Composable
+fun ScanningScreen() {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Icon(
+            imageVector = Icons.Default.MusicNote,
+            contentDescription = null,
+            modifier = Modifier.size(80.dp),
+            tint = MaterialTheme.colorScheme.primary
+        )
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        CircularProgressIndicator(
+            modifier = Modifier.size(48.dp),
+            color = MaterialTheme.colorScheme.primary
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Text(
+            text = "Scanning Your Music Library",
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Text(
+            text = "Finding all songs on your device including SD card...",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center
+        )
+    }
+}
+
+/**
+ * Screen to request storage/audio permission
+ */
+@Composable
+fun PermissionRequestScreen(
+    onRequestPermission: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Icon(
+            imageVector = Icons.Default.MusicNote,
+            contentDescription = null,
+            modifier = Modifier.size(100.dp),
+            tint = MaterialTheme.colorScheme.primary
+        )
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        Text(
+            text = "Access Your Music",
+            style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.Bold
+        )
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        Text(
+            text = "UltraMusic needs permission to scan your device for music files. This includes internal storage and SD card.",
+            textAlign = TextAlign.Center,
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        Spacer(modifier = Modifier.height(32.dp))
+
+        Button(
+            onClick = onRequestPermission,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Grant Permission")
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Text(
+            text = "We only access audio files. Your data stays on your device.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center
+        )
     }
 }
 

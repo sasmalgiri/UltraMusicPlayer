@@ -959,7 +959,70 @@ private fun ControlsTab(
                 }
             }
         }
-        
+
+        // Dominant Mode Toggle (DJ Mode)
+        item {
+            val isDominantMode by viewModel.isDominantMode.collectAsState()
+
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { viewModel.setDominantMode(!isDominantMode) },
+                colors = CardDefaults.cardColors(
+                    containerColor = if (isDominantMode) Color(0xFFFF5722).copy(alpha = 0.3f)
+                                    else Color(0xFF2196F3).copy(alpha = 0.2f)
+                ),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        if (isDominantMode) "🔥" else "🎧",
+                        fontSize = 32.sp
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            if (isDominantMode) "DOMINANT MODE: ON" else "DOMINANT MODE: OFF",
+                            fontWeight = FontWeight.Bold,
+                            color = if (isDominantMode) Color(0xFFFF5722) else Color.White
+                        )
+                        Text(
+                            if (isDominantMode)
+                                "NOTHING STOPS THE MUSIC! Calls, notifications ignored."
+                            else
+                                "Tap to enable - Music plays through EVERYTHING",
+                            color = Color.Gray,
+                            fontSize = 12.sp
+                        )
+                    }
+                    // Toggle indicator
+                    Box(
+                        modifier = Modifier
+                            .size(48.dp, 28.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(
+                                if (isDominantMode) Color(0xFFFF5722)
+                                else Color.Gray.copy(alpha = 0.5f)
+                            )
+                            .padding(2.dp),
+                        contentAlignment = if (isDominantMode) Alignment.CenterEnd else Alignment.CenterStart
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(24.dp)
+                                .clip(CircleShape)
+                                .background(Color.White)
+                        )
+                    }
+                }
+            }
+        }
+
         // Quick actions
         item {
             Card(

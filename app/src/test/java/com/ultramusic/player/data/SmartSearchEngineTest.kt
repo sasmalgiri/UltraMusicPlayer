@@ -4,6 +4,9 @@ import com.google.common.truth.Truth.assertThat
 import com.ultramusic.player.TestFixtures
 import org.junit.Before
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 
 /**
  * Unit tests for SmartSearchEngine
@@ -11,6 +14,8 @@ import org.junit.Test
  * Tests fuzzy matching, phonetic search, Bengali transliteration,
  * and other search features.
  */
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [33])
 class SmartSearchEngineTest {
 
     private lateinit var searchEngine: SmartSearchEngine

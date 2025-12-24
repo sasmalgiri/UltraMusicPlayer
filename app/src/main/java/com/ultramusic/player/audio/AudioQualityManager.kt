@@ -3,6 +3,7 @@ package com.ultramusic.player.audio
 import android.content.Context
 import android.media.audiofx.Equalizer
 import android.media.audiofx.PresetReverb
+import android.util.Log
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -52,16 +53,9 @@ data class FormantSettings(
 class AudioQualityManager @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
-    private val _qualityState = MutableStateFlow(QualityState())
-    val qualityState: StateFlow<QualityState> = _qualityState.asStateFlow()
-    
-    private val _formantSettings = MutableStateFlow(FormantSettings())
-    val formantSettings: StateFlow<FormantSettings> = _formantSettings.asStateFlow()
-    
-    private var equalizer: Equalizer? = null
-    
-    // Quality thresholds
     companion object {
+        private const val TAG = "AudioQualityManager"
+
         // Speed ranges and quality impact
         const val SPEED_EXCELLENT_MIN = 0.5f
         const val SPEED_EXCELLENT_MAX = 2.0f
@@ -69,12 +63,20 @@ class AudioQualityManager @Inject constructor(
         const val SPEED_GOOD_MAX = 4.0f
         const val SPEED_WARNING_MIN = 0.1f
         const val SPEED_WARNING_MAX = 6.0f
-        
+
         // Pitch ranges and quality impact (semitones)
         const val PITCH_EXCELLENT_RANGE = 12f  // ±1 octave
         const val PITCH_GOOD_RANGE = 24f       // ±2 octaves
         const val PITCH_WARNING_RANGE = 36f    // ±3 octaves
     }
+
+    private val _qualityState = MutableStateFlow(QualityState())
+    val qualityState: StateFlow<QualityState> = _qualityState.asStateFlow()
+
+    private val _formantSettings = MutableStateFlow(FormantSettings())
+    val formantSettings: StateFlow<FormantSettings> = _formantSettings.asStateFlow()
+
+    private var equalizer: Equalizer? = null
     
     /**
      * Set quality mode
@@ -262,7 +264,7 @@ class AudioQualityManager @Inject constructor(
                 enabled = true
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e(TAG, "Error initializing equalizer effects", e)
         }
     }
     

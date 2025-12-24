@@ -52,6 +52,7 @@ import com.ultramusic.player.data.SmartSearchEngine
 import com.ultramusic.player.data.Song
 import com.ultramusic.player.data.SongMetadataManager
 import com.ultramusic.player.data.SortOption
+import com.ultramusic.player.PermissionState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -124,10 +125,42 @@ class MainViewModel @Inject constructor(
     
     private val _uiState = MutableStateFlow(MainUiState())
     val uiState: StateFlow<MainUiState> = _uiState.asStateFlow()
-    
+
     val playbackState: StateFlow<PlaybackState> = musicController.playbackState
     val queue: StateFlow<List<Song>> = musicController.queue
-    
+
+    // ==================== PERMISSION & SCANNING STATE ====================
+
+    private val _permissionState = MutableStateFlow(PermissionState.UNKNOWN)
+    val permissionState: StateFlow<PermissionState> = _permissionState.asStateFlow()
+
+    private val _isScanning = MutableStateFlow(false)
+    val isScanning: StateFlow<Boolean> = _isScanning.asStateFlow()
+
+    private var hasScannedOnce = false
+
+    /**
+     * Called when storage/audio permission is granted
+     */
+    fun onPermissionGranted() {
+        _permissionState.value = PermissionState.GRANTED
+    }
+
+    /**
+     * Called when storage/audio permission is denied
+     */
+    fun onPermissionDenied() {
+        _permissionState.value = PermissionState.DENIED
+    }
+
+    /**
+     * Refresh the music library (rescan all storage)
+     */
+    fun refreshLibrary() {
+        hasScannedOnce = false
+        loadMusic()
+    }
+
     // ==================== AUTO CLIP DETECTION ====================
     private val _detectedClips = MutableStateFlow<List<com.ultramusic.player.core.DetectedClip>>(emptyList())
     val detectedClips: StateFlow<List<com.ultramusic.player.core.DetectedClip>> = _detectedClips.asStateFlow()
@@ -235,44 +268,73 @@ class MainViewModel @Inject constructor(
     val dropRecommendation: StateFlow<DropRecommendation?> = crowdAnalyzer.dropRecommendation
     
     // ==================== FREQUENCY WARFARE ====================
-    
+
     val activeTactic: StateFlow<WarfareTactic?> = frequencyWarfare.activeTactic
     val isWarfareActive: StateFlow<Boolean> = frequencyWarfare.isActive
-    
+
+    // ==================== DOMINANT MODE (DJ MODE) ====================
+
+    /**
+     * Dominant mode state - when enabled, app ignores ALL audio interruptions
+     * (calls, notifications, other apps) and keeps playing
+     */
+    val isDominantMode: StateFlow<Boolean> = musicController.getDominantModeState()
+
+    /**
+     * Enable/disable dominant mode (DJ Mode)
+     * When enabled, the app will NEVER pause for calls, notifications, or other apps
+     */
+    fun setDominantMode(enabled: Boolean) {
+        musicController.setDominantMode(enabled)
+    }
+
     init {
-        loadMusic()
+        // NOTE: loadMusic() is now called from MainActivity after permission is granted
         observeVoiceSearch()
         observeExtremeVoiceCapture()
         checkVoiceCapabilities()
         observeQuality()
         observePlaylistChanges()
     }
-    
+
     // ==================== MUSIC LOADING ====================
-    
+
+    /**
+     * Load all music from device storage (internal + external/SD card)
+     * Called automatically after storage permission is granted
+     */
     fun loadMusic() {
+        // Prevent duplicate scans
+        if (hasScannedOnce && _uiState.value.songs.isNotEmpty()) {
+            _isScanning.value = false
+            return
+        }
+
         viewModelScope.launch {
+            _isScanning.value = true
             _uiState.value = _uiState.value.copy(isLoading = true, errorMessage = null)
-            
+
             try {
-                // Load with folder structure
+                // Scan ALL storage including SD card via MediaStore
                 folderRepository.scanMusicWithFolders().collectLatest { (songs, _) ->
+                    hasScannedOnce = true
                     val sorted = musicRepository.sortSongs(songs, _uiState.value.sortOption)
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
                         songs = sorted,
                         filteredSongs = applySearch(sorted, _uiState.value.searchQuery)
                     )
-                    
+                    _isScanning.value = false
+
                     // Load root folders for browser
                     updateFolderContents("")
-                    
+
                     // Initialize playlist manager with all songs
                     smartPlaylistManager.initialize(songs)
-                    
+
                     // Initialize counter song engine with library
                     initializeCounterEngine(songs)
-                    
+
                     // Index songs for battle (INSTANT counter picks!)
                     indexSongsForBattle(songs)
 
@@ -280,6 +342,7 @@ class MainViewModel @Inject constructor(
                     updateArtistsAndAlbums()
                 }
             } catch (e: Exception) {
+                _isScanning.value = false
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
                     errorMessage = "Failed to load music: ${e.message}"

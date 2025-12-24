@@ -5,6 +5,9 @@ import com.google.common.truth.Truth.assertThat
 import io.mockk.mockk
 import org.junit.Before
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 
 /**
  * Unit tests for AudioBattleEngine
@@ -12,6 +15,8 @@ import org.junit.Test
  * Tests battle modes, presets, state management, and EQ band logic.
  * Note: Actual audio processing requires Android device testing.
  */
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [33])
 class AudioBattleEngineTest {
 
     private lateinit var battleEngine: AudioBattleEngine

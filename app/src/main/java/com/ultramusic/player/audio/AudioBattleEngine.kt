@@ -8,6 +8,7 @@ import android.media.audiofx.Virtualizer
 import android.media.audiofx.DynamicsProcessing
 import android.media.audiofx.PresetReverb
 import android.os.Build
+import android.util.Log
 import androidx.annotation.RequiresApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -115,12 +116,12 @@ class AudioBattleEngine @Inject constructor(
             }
             
             _isEnabled.value = true
-            
+
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e(TAG, "Error initializing battle engine", e)
         }
     }
-    
+
     @RequiresApi(Build.VERSION_CODES.P)
     private fun initDynamicsProcessing(audioSessionId: Int) {
         try {
@@ -150,10 +151,10 @@ class AudioBattleEngine @Inject constructor(
                 setLimiterByChannelIndex(0, limiter)
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e(TAG, "Error initializing dynamics processing", e)
         }
     }
-    
+
     // ==================== BATTLE MODES ====================
     
     /**
@@ -571,6 +572,8 @@ class AudioBattleEngine @Inject constructor(
     }
     
     companion object {
+        private const val TAG = "AudioBattleEngine"
+
         val DEFAULT_PRESETS = listOf(
             BattlePreset(
                 name = "🔊 Bass Destroyer",

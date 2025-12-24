@@ -47,19 +47,22 @@ class NativeBattleEngine @Inject constructor() {
         const val MAX_PITCH_SEMITONES = 36f
         
         // Try to load native library
+        // DISABLED: Superpowered SDK crashes on license validation in emulator
+        // TODO: Re-enable when proper Superpowered license is configured
         private var isNativeLoaded = false
-        
+
         init {
+            // Native engine now uses SoundTouch (FREE, no license needed)
             try {
                 System.loadLibrary("ultramusic_audio")
                 isNativeLoaded = true
-                Log.i(TAG, "Native Battle Engine loaded successfully!")
+                Log.i(TAG, "Native Battle Engine loaded! (SoundTouch mode)")
             } catch (e: UnsatisfiedLinkError) {
                 Log.e(TAG, "Failed to load native library: ${e.message}")
                 isNativeLoaded = false
             }
         }
-        
+
         fun isAvailable(): Boolean = isNativeLoaded
     }
     
@@ -454,3 +457,4 @@ class BattleAudioProcessor(
 }
 
 private val EMPTY_BUFFER: ByteBuffer = ByteBuffer.allocate(0)
+

@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import android.util.Log
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.math.abs
@@ -39,6 +40,10 @@ import kotlin.math.sqrt
 class BattleIntelligence @Inject constructor(
     private val context: Context
 ) {
+    companion object {
+        private const val TAG = "BattleIntelligence"
+    }
+
     private val scope = CoroutineScope(Dispatchers.Default)
     private var analysisJob: Job? = null
     private var audioRecord: AudioRecord? = null
@@ -109,10 +114,10 @@ class BattleIntelligence @Inject constructor(
                 }
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e(TAG, "Error in battle intelligence listening", e)
         }
     }
-    
+
     fun stopListening() {
         _isListening.value = false
         analysisJob?.cancel()

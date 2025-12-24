@@ -12,12 +12,17 @@ import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Before
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 
 /**
  * Unit tests for SmartPlaylistManager
  *
  * Tests playlist operations: add, remove, move, shuffle, loop, navigation
  */
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [33])
 @OptIn(ExperimentalCoroutinesApi::class)
 class SmartPlaylistManagerTest {
 

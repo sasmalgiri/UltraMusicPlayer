@@ -14,6 +14,7 @@ import android.os.Bundle
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
+import android.util.Log
 import androidx.core.content.ContextCompat
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -47,6 +48,10 @@ sealed class VoiceSearchState {
 class VoiceSearchManager @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
+    companion object {
+        private const val TAG = "VoiceSearchManager"
+    }
+
     private var speechRecognizer: SpeechRecognizer? = null
     private var noiseSuppressor: NoiseSuppressor? = null
     private var echoCanceler: AcousticEchoCanceler? = null
@@ -118,7 +123,7 @@ class VoiceSearchManager @Inject constructor(
                 }
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e(TAG, "Error initializing audio processing", e)
         }
     }
     
@@ -296,10 +301,10 @@ class VoiceSearchManager @Inject constructor(
             audioRecord?.release()
             audioRecord = null
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e(TAG, "Error releasing audio resources", e)
         }
     }
-    
+
     /**
      * Release all resources
      */

@@ -204,9 +204,12 @@ class AppErrorHandler @Inject constructor(
      * Start timing an operation
      */
     fun startTiming(operationName: String) {
+        val existing = performanceMetrics[operationName]
         performanceMetrics[operationName] = PerformanceMetric(
             name = operationName,
-            startTime = System.nanoTime()
+            startTime = System.nanoTime(),
+            callCount = existing?.callCount ?: 0,
+            totalDurationMs = existing?.totalDurationMs ?: 0
         )
     }
     

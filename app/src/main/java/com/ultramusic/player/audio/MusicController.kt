@@ -45,7 +45,8 @@ import kotlin.math.pow
 @Singleton
 class MusicController @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val nativeBattleEngine: NativeBattleEngine
+    private val nativeBattleEngine: NativeBattleEngine,
+    private val audioFocusManager: AudioFocusManager
 ) {
     private var exoPlayer: ExoPlayer? = null
     private var progressJob: Job? = null
@@ -98,6 +99,35 @@ class MusicController @Inject constructor(
     init {
         initializeAudioProcessing()
         initializePlayer()
+        initializeAudioFocus()
+    }
+
+    /**
+     * Initialize audio focus handling for interruptions (calls, notifications, etc.)
+     */
+    private fun initializeAudioFocus() {
+        audioFocusManager.setCallbacks(
+            onLost = {
+                // Focus lost - pause playback
+                android.util.Log.i(TAG, "Audio focus lost - pausing")
+                pause()
+            },
+            onGained = {
+                // Focus regained - resume if we were playing
+                android.util.Log.i(TAG, "Audio focus regained - resuming")
+                play()
+            },
+            onDuck = { volume ->
+                // Duck volume (only in non-battle mode)
+                android.util.Log.d(TAG, "Ducking volume to $volume")
+                exoPlayer?.volume = volume
+            },
+            onRestore = {
+                // Restore full volume
+                android.util.Log.d(TAG, "Restoring full volume")
+                exoPlayer?.volume = 1.0f
+            }
+        )
     }
     
     /**
@@ -209,15 +239,21 @@ class MusicController @Inject constructor(
     fun playSong(song: Song, playlist: List<Song> = listOf(song)) {
         _queue.value = playlist
         currentQueueIndex = playlist.indexOf(song).coerceAtLeast(0)
-        
+
+        // Request audio focus before playing
+        if (!audioFocusManager.requestFocus()) {
+            android.util.Log.w(TAG, "Could not get audio focus - playing anyway")
+        }
+        audioFocusManager.onPlaybackStarted()
+
         exoPlayer?.let { player ->
             val mediaItem = MediaItem.fromUri(song.uri)
             player.setMediaItem(mediaItem)
             player.prepare()
             player.play()
-            
+
             applyCurrentSettings()
-            
+
             _playbackState.value = _playbackState.value.copy(
                 currentSong = song,
                 isPlaying = true,
@@ -236,6 +272,8 @@ class MusicController @Inject constructor(
     fun stop() {
         exoPlayer?.stop()
         stopProgressUpdates()
+        audioFocusManager.onPlaybackStopped()
+        audioFocusManager.abandonFocus()
         _playbackState.value = PlaybackState()
     }
     
@@ -310,6 +348,8 @@ class MusicController @Inject constructor(
         battleModeEnabled = enabled
         if (useNativeEngine) nativeBattleEngine.setBattleMode(enabled)
         battleAudioProcessor?.setBattleMode(enabled)
+        // Sync with audio focus manager - in battle mode, we never duck for notifications
+        audioFocusManager.setBattleMode(enabled)
         _playbackState.value = _playbackState.value.copy(battleModeEnabled = enabled)
         android.util.Log.i(TAG, "Battle mode: ${if (enabled) "ENGAGED!" else "off"}")
     }
@@ -319,7 +359,29 @@ class MusicController @Inject constructor(
         if (useNativeEngine) nativeBattleEngine.setBassBoost(bassBoostDb)
         android.util.Log.d(TAG, "Bass boost: $bassBoostDb dB")
     }
-    
+
+    // ==================== DOMINANT MODE (DJ Mode) ====================
+
+    /**
+     * Enable/disable dominant mode (DJ Mode)
+     * When enabled, the app will NEVER pause for calls, notifications, or other apps
+     * Only user explicitly stopping will pause playback
+     */
+    fun setDominantMode(enabled: Boolean) {
+        audioFocusManager.setDominantMode(enabled)
+        android.util.Log.i(TAG, "Dominant mode: ${if (enabled) "DOMINATING - Nothing stops the music!" else "Normal - respects audio focus"}")
+    }
+
+    /**
+     * Get the current dominant mode state flow for UI binding
+     */
+    fun getDominantModeState() = audioFocusManager.isDominantMode
+
+    /**
+     * Check if dominant mode is currently enabled
+     */
+    fun isDominantModeEnabled(): Boolean = audioFocusManager.isDominantModeEnabled()
+
     // ==================== INTERNAL: Apply Speed/Pitch ====================
     
     private fun applySpeedAndPitch() {
@@ -495,6 +557,7 @@ class MusicController @Inject constructor(
     
     fun release() {
         stopProgressUpdates()
+        audioFocusManager.abandonFocus()
         exoPlayer?.release()
         exoPlayer = null
         nativeBattleEngine.release()

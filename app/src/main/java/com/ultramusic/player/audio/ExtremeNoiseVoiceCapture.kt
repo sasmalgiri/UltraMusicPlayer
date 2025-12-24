@@ -14,6 +14,7 @@ import android.os.Bundle
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
+import android.util.Log
 import androidx.core.content.ContextCompat
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
@@ -113,6 +114,7 @@ class ExtremeNoiseVoiceCapture @Inject constructor(
     private val recognitionAttempts = mutableListOf<RecognitionAttempt>()
     
     companion object {
+        private const val TAG = "ExtremeNoiseVoiceCapture"
         private const val SAMPLE_RATE = 16000
         private const val CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO
         private const val AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT
@@ -375,10 +377,10 @@ class ExtremeNoiseVoiceCapture @Inject constructor(
                 bufferSize * 2
             )
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e(TAG, "Error initializing audio record", e)
         }
     }
-    
+
     /**
      * Initialize audio processing for voice capture
      */
@@ -404,10 +406,10 @@ class ExtremeNoiseVoiceCapture @Inject constructor(
                 autoGainControl?.enabled = true
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e(TAG, "Error initializing audio processing", e)
         }
     }
-    
+
     /**
      * Measure current noise level in dB
      */

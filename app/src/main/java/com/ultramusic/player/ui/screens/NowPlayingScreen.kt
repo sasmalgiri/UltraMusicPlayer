@@ -477,7 +477,12 @@ fun NowPlayingScreen(
             PresetPanel(
                 presets = AudioPreset.PRESETS,
                 selectedPreset = uiState.selectedPreset,
-                onPresetSelected = { viewModel.applyPreset(it) }
+                onPresetSelected = { viewModel.applyPreset(it) },
+                speed = playbackState.speed,
+                pitch = playbackState.pitch,
+                onSpeedChange = { viewModel.setSpeed(it) },
+                onPitchChange = { viewModel.setPitch(it) },
+                onResetAll = { viewModel.resetAll() }
             )
         }
         

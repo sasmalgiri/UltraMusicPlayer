@@ -1,3 +1,6 @@
+import java.util.Properties
+import java.io.FileInputStream
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -5,9 +8,33 @@ plugins {
     id("com.google.devtools.ksp")
 }
 
+// Load signing config from local.properties or environment
+val keystorePropertiesFile = rootProject.file("keystore.properties")
+val keystoreProperties = Properties()
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(FileInputStream(keystorePropertiesFile))
+}
+
 android {
     namespace = "com.ultramusic.player"
     compileSdk = 34
+
+    signingConfigs {
+        create("release") {
+            if (keystorePropertiesFile.exists()) {
+                keyAlias = keystoreProperties["keyAlias"] as String
+                keyPassword = keystoreProperties["keyPassword"] as String
+                storeFile = file(keystoreProperties["storeFile"] as String)
+                storePassword = keystoreProperties["storePassword"] as String
+            } else {
+                // Fallback to environment variables for CI/CD
+                keyAlias = System.getenv("SIGNING_KEY_ALIAS") ?: ""
+                keyPassword = System.getenv("SIGNING_KEY_PASSWORD") ?: ""
+                storeFile = file(System.getenv("SIGNING_STORE_FILE") ?: "keystore.jks")
+                storePassword = System.getenv("SIGNING_STORE_PASSWORD") ?: ""
+            }
+        }
+    }
 
     defaultConfig {
         applicationId = "com.ultramusic.player"
@@ -46,6 +73,7 @@ android {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -87,6 +115,13 @@ android {
 
     lint {
         baseline = file("lint-baseline.xml")
+    }
+
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
+            isReturnDefaultValues = true
+        }
     }
 }
 
@@ -149,6 +184,9 @@ dependencies {
     testImplementation("com.google.truth:truth:1.1.5")
     testImplementation("app.cash.turbine:turbine:1.0.0")
     testImplementation("com.google.dagger:hilt-android-testing:2.50")
+    testImplementation("org.robolectric:robolectric:4.11.1")
+    testImplementation("androidx.test:core:1.5.0")
+    testImplementation("androidx.test.ext:junit-ktx:1.1.5")
     kspTest("com.google.dagger:hilt-compiler:2.50")
 
     // Android Instrumented Tests

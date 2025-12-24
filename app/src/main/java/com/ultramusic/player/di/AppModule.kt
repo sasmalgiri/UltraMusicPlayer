@@ -9,6 +9,7 @@ import com.ultramusic.player.audio.AudioQualityManager
 import com.ultramusic.player.audio.BattleIntelligence
 import com.ultramusic.player.audio.CrowdAnalyzer
 import com.ultramusic.player.audio.FrequencyWarfare
+import com.ultramusic.player.audio.AudioFocusManager
 import com.ultramusic.player.audio.NativeBattleEngine
 import com.ultramusic.player.audio.SongBattleAnalyzer
 import com.ultramusic.player.audio.VenueProfiler
@@ -136,15 +137,24 @@ object AppModule {
     }
     
     // ==================== AUDIO PLAYBACK ====================
-    
+
+    @Provides
+    @Singleton
+    fun provideAudioFocusManager(
+        @ApplicationContext context: Context
+    ): AudioFocusManager {
+        return AudioFocusManager(context)
+    }
+
     @Provides
     @Singleton
     @UnstableApi
     fun provideMusicController(
         @ApplicationContext context: Context,
-        nativeBattleEngine: NativeBattleEngine
+        nativeBattleEngine: NativeBattleEngine,
+        audioFocusManager: AudioFocusManager
     ): MusicController {
-        return MusicController(context, nativeBattleEngine)
+        return MusicController(context, nativeBattleEngine, audioFocusManager)
     }
     
     @Provides

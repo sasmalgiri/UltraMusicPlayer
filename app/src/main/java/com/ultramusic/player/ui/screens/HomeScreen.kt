@@ -1,7 +1,5 @@
 package com.ultramusic.player.ui.screens
 
-import android.Manifest
-import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInVertically
@@ -75,9 +73,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.google.accompanist.permissions.ExperimentalPermissionsApi
-import com.google.accompanist.permissions.isGranted
-import com.google.accompanist.permissions.rememberPermissionState
 import com.ultramusic.player.data.AudioPreset
 import com.ultramusic.player.data.Song
 import com.ultramusic.player.data.SortOption
@@ -88,7 +83,7 @@ import com.ultramusic.player.ui.components.PresetPanel
 import com.ultramusic.player.ui.components.SongListItem
 import com.ultramusic.player.ui.components.SpeedPitchControl
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalPermissionsApi::class, ExperimentalFoundationApi::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun HomeScreen(
     viewModel: MainViewModel,
@@ -102,24 +97,9 @@ fun HomeScreen(
     
     var isSearching by remember { mutableStateOf(false) }
     var showSortMenu by remember { mutableStateOf(false) }
-    
-    // Permission handling
-    val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        Manifest.permission.READ_MEDIA_AUDIO
-    } else {
-        Manifest.permission.READ_EXTERNAL_STORAGE
-    }
-    
-    val permissionState = rememberPermissionState(permission)
-    
-    LaunchedEffect(permissionState.status.isGranted) {
-        if (permissionState.status.isGranted) {
-            viewModel.loadMusic()
-        } else {
-            permissionState.launchPermissionRequest()
-        }
-    }
-    
+
+    // NOTE: Permission handling moved to MainActivity for auto-scan on launch
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -223,13 +203,8 @@ fun HomeScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
+            // NOTE: Permission handling moved to MainActivity
             when {
-                !permissionState.status.isGranted -> {
-                    PermissionRequest(
-                        onRequestPermission = { permissionState.launchPermissionRequest() }
-                    )
-                }
-                
                 uiState.isLoading -> {
                     Box(
                         modifier = Modifier.fillMaxSize(),
@@ -417,7 +392,12 @@ fun HomeScreen(
                 PresetPanel(
                     presets = AudioPreset.PRESETS,
                     selectedPreset = uiState.selectedPreset,
-                    onPresetSelected = { viewModel.applyPreset(it) }
+                    onPresetSelected = { viewModel.applyPreset(it) },
+                    speed = playbackState.speed,
+                    pitch = playbackState.pitch,
+                    onSpeedChange = { viewModel.setSpeed(it) },
+                    onPitchChange = { viewModel.setPitch(it) },
+                    onResetAll = { viewModel.resetAll() }
                 )
             }
         }

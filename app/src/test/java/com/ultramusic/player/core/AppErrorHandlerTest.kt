@@ -12,6 +12,9 @@ import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Before
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 import java.io.File
 import java.io.IOException
 import java.net.SocketTimeoutException
@@ -23,6 +26,8 @@ import java.net.UnknownHostException
  * Tests error categorization, logging, performance tracking,
  * and error history management.
  */
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [33])
 @OptIn(ExperimentalCoroutinesApi::class)
 class AppErrorHandlerTest {
 

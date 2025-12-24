@@ -10,6 +10,7 @@ import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
 import android.os.Build
+import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.media3.common.util.UnstableApi
 import com.ultramusic.player.data.Song
@@ -682,9 +683,9 @@ class ActiveBattleSystem @Inject constructor(
             audioRecord?.startRecording()
         } catch (e: SecurityException) {
             // Permission can still be revoked at runtime
-            e.printStackTrace()
+            Log.e(TAG, "Audio permission denied", e)
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e(TAG, "Error starting audio capture", e)
         }
     }
     
@@ -787,10 +788,10 @@ class ActiveBattleSystem @Inject constructor(
                 }
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e(TAG, "Error providing haptic feedback", e)
         }
     }
-    
+
     private fun logEvent(title: String, message: String) {
         val entry = BattleLogEntry(
             timestamp = System.currentTimeMillis(),
@@ -801,8 +802,10 @@ class ActiveBattleSystem @Inject constructor(
     }
     
     // ==================== BATTLE SCRIPTS ====================
-    
+
     companion object {
+        private const val TAG = "ActiveBattleSystem"
+
         val SCRIPTS = listOf(
             BattleScript(
                 name = "💥 BASS DROP",
