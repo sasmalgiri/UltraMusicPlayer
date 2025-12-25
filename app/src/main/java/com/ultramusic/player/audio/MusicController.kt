@@ -472,11 +472,41 @@ class MusicController @Inject constructor(
         setPitch(preset.pitch)
     }
     
+    /**
+     * Reset speed and pitch to defaults WITHOUT affecting playback
+     * Only resets audio parameters, not play/pause state
+     */
     fun resetAll() {
-        resetSpeed()
-        resetPitch()
-        setBattleMode(false)
-        setBassBoost(0f)
+        try {
+            // Reset speed safely
+            currentSpeed = UltraMusicApp.DEFAULT_SPEED
+            _playbackState.value = _playbackState.value.copy(speed = currentSpeed)
+
+            // Reset pitch safely
+            currentPitchSemitones = UltraMusicApp.DEFAULT_PITCH
+            _playbackState.value = _playbackState.value.copy(pitch = currentPitchSemitones)
+
+            // Apply the changes to player
+            try {
+                applySpeedAndPitch()
+            } catch (e: Exception) {
+                android.util.Log.w(TAG, "Speed/pitch reset had minor issue: ${e.message}")
+            }
+
+            // Reset bass boost safely (don't call setBattleMode as it can affect audio)
+            try {
+                bassBoostDb = 0f
+                if (useNativeEngine) {
+                    nativeBattleEngine.setBassBoost(0f)
+                }
+            } catch (e: Exception) {
+                android.util.Log.w(TAG, "Bass reset had minor issue: ${e.message}")
+            }
+
+            android.util.Log.d(TAG, "Reset all: speed=${currentSpeed}x, pitch=${currentPitchSemitones}st")
+        } catch (e: Exception) {
+            android.util.Log.e(TAG, "Error in resetAll", e)
+        }
     }
     
     // ==================== A-B LOOP ====================
