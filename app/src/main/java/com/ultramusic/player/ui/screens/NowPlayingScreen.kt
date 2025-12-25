@@ -62,7 +62,7 @@ import com.ultramusic.player.ui.components.BattleControlsPanel
 import com.ultramusic.player.ui.components.CompactFolderPanel
 import com.ultramusic.player.ui.components.SmartPlaylistPanel
 import com.ultramusic.player.ui.components.UnifiedControlsPanel
-import com.ultramusic.player.ui.components.WaveformVisualizer
+import com.ultramusic.player.ui.components.MusicSpeedChangerWaveform
 import com.ultramusic.player.ui.theme.UltraGradientEnd
 import com.ultramusic.player.ui.theme.UltraGradientStart
 
@@ -143,8 +143,8 @@ fun NowPlayingScreen(
     val reverbEnabled by viewModel.reverbEnabled.collectAsState()
     val reverbPreset by viewModel.reverbPreset.collectAsState()
 
-    // Waveform height state (adjustable 30-200 dp)
-    var waveformHeight by remember { mutableIntStateOf(80) }
+    // Waveform height state (adjustable 60-200 dp)
+    var waveformHeight by remember { mutableIntStateOf(100) }
 
     val song = playbackState.currentSong
 
@@ -642,87 +642,59 @@ private fun CompactNowPlayingSection(
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        // Waveform height control + waveform
-        if (waveformData.isNotEmpty()) {
-            // Height adjustment row
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "Wave",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+        // Music Speed Changer style waveform with height adjustment
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.End,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (isExtractingWaveform) {
+                androidx.compose.material3.CircularProgressIndicator(
+                    modifier = Modifier.size(12.dp),
+                    strokeWidth = 2.dp
                 )
                 Spacer(modifier = Modifier.width(4.dp))
-                IconButton(
-                    onClick = { onWaveformHeightChange((waveformHeight - 20).coerceAtLeast(30)) },
-                    modifier = Modifier.size(24.dp)
-                ) {
-                    Text("-", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
-                }
-                Text(
-                    text = "${waveformHeight}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.width(28.dp),
-                    textAlign = TextAlign.Center
-                )
-                IconButton(
-                    onClick = { onWaveformHeightChange((waveformHeight + 20).coerceAtMost(200)) },
-                    modifier = Modifier.size(24.dp)
-                ) {
-                    Text("+", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
-                }
             }
-
-            WaveformVisualizer(
-                waveformData = waveformData,
-                currentPosition = progress,
-                durationMs = duration,
-                loopStartMs = abLoopStart,
-                loopEndMs = abLoopEnd,
-                isLooping = isLooping,
-                onSeek = onSeekToPercent,
-                onLoopStartChange = onLoopStartChange,
-                onLoopEndChange = onLoopEndChange,
-                onClearLoop = onClearLoop,
-                beatMarkers = beatMarkers,
-                estimatedBpm = estimatedBpm ?: 0f,
-                showBeatMarkers = true,
-                modifier = Modifier.fillMaxWidth(),
-                height = waveformHeight.dp
+            Text(
+                text = "Height",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-        } else {
-            // Progress info while loading
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally
+            Spacer(modifier = Modifier.width(4.dp))
+            IconButton(
+                onClick = { onWaveformHeightChange((waveformHeight - 20).coerceAtLeast(60)) },
+                modifier = Modifier.size(24.dp)
             ) {
-                if (isExtractingWaveform) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        androidx.compose.material3.CircularProgressIndicator(
-                            modifier = Modifier.size(12.dp),
-                            strokeWidth = 2.dp
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "Analyzing...",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = "$positionFormatted / $durationFormatted",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                Text("-", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+            }
+            Text(
+                text = "${waveformHeight}",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.width(28.dp),
+                textAlign = TextAlign.Center
+            )
+            IconButton(
+                onClick = { onWaveformHeightChange((waveformHeight + 20).coerceAtMost(200)) },
+                modifier = Modifier.size(24.dp)
+            ) {
+                Text("+", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
             }
         }
+
+        // Music Speed Changer style waveform
+        MusicSpeedChangerWaveform(
+            waveformData = waveformData,
+            currentPosition = progress,
+            durationMs = duration,
+            loopStartMs = abLoopStart,
+            loopEndMs = abLoopEnd,
+            onSeek = onSeekToPercent,
+            onLoopStartChange = onLoopStartChange,
+            onLoopEndChange = onLoopEndChange,
+            onClearLoop = onClearLoop,
+            modifier = Modifier.fillMaxWidth(),
+            height = waveformHeight.dp
+        )
     }
 }

@@ -1,0 +1,545 @@
+package com.ultramusic.player.ui.components
+
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Fill
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import kotlin.math.abs
+import kotlin.math.max
+
+/**
+ * Music Speed Changer Style Waveform
+ *
+ * Features:
+ * - Simple rounded bar visualization
+ * - Clean A-B markers with draggable handles
+ * - Smooth seek functionality
+ * - No complex zoom/pan - just clean waveform
+ */
+@Composable
+fun MusicSpeedChangerWaveform(
+    waveformData: List<Float>,
+    currentPosition: Float,  // 0-1
+    durationMs: Long,
+    loopStartMs: Long?,
+    loopEndMs: Long?,
+    onSeek: (Float) -> Unit,
+    onLoopStartChange: (Long) -> Unit,
+    onLoopEndChange: (Long) -> Unit,
+    onClearLoop: () -> Unit,
+    modifier: Modifier = Modifier,
+    height: Dp = 100.dp,
+    barColor: Color = Color(0xFF4FC3F7),       // Light blue for unplayed
+    playedColor: Color = Color(0xFF00E676),     // Green for played
+    loopRegionColor: Color = Color(0xFFFF9800), // Orange for loop region
+    backgroundColor: Color = Color(0xFF1A1A1A)
+) {
+    var isDraggingA by remember { mutableStateOf(false) }
+    var isDraggingB by remember { mutableStateOf(false) }
+
+    val loopStartPos = loopStartMs?.let { it.toFloat() / durationMs } ?: 0f
+    val loopEndPos = loopEndMs?.let { it.toFloat() / durationMs } ?: 1f
+
+    Column(modifier = modifier) {
+        // Waveform canvas
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(height)
+                .clip(RoundedCornerShape(12.dp))
+                .background(backgroundColor)
+        ) {
+            Canvas(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .pointerInput(Unit) {
+                        detectTapGestures { offset ->
+                            val pos = (offset.x / size.width).coerceIn(0f, 1f)
+                            onSeek(pos)
+                        }
+                    }
+                    .pointerInput(loopStartMs, loopEndMs) {
+                        detectDragGestures(
+                            onDragStart = { offset ->
+                                val pos = offset.x / size.width
+                                val distToA = if (loopStartMs != null) abs(pos - loopStartPos) else 1f
+                                val distToB = if (loopEndMs != null) abs(pos - loopEndPos) else 1f
+
+                                when {
+                                    distToA < 0.05f && distToA <= distToB -> isDraggingA = true
+                                    distToB < 0.05f -> isDraggingB = true
+                                    else -> onSeek(pos.coerceIn(0f, 1f))
+                                }
+                            },
+                            onDrag = { change, _ ->
+                                val pos = (change.position.x / size.width).coerceIn(0f, 1f)
+                                when {
+                                    isDraggingA -> {
+                                        val maxPos = if (loopEndMs != null) loopEndPos - 0.01f else 1f
+                                        val newPos = pos.coerceIn(0f, maxPos)
+                                        onLoopStartChange((newPos * durationMs).toLong())
+                                    }
+                                    isDraggingB -> {
+                                        val minPos = if (loopStartMs != null) loopStartPos + 0.01f else 0f
+                                        val newPos = pos.coerceIn(minPos, 1f)
+                                        onLoopEndChange((newPos * durationMs).toLong())
+                                    }
+                                }
+                            },
+                            onDragEnd = {
+                                isDraggingA = false
+                                isDraggingB = false
+                            }
+                        )
+                    }
+            ) {
+                val canvasWidth = size.width
+                val canvasHeight = size.height
+                val centerY = canvasHeight / 2
+
+                // Number of bars to draw
+                val numBars = if (waveformData.isNotEmpty()) waveformData.size else 100
+                val barWidth = canvasWidth / numBars
+                val barGap = 2.dp.toPx()
+                val actualBarWidth = (barWidth - barGap).coerceAtLeast(2.dp.toPx())
+                val cornerRadius = actualBarWidth / 2
+
+                // Draw loop region background
+                if (loopStartMs != null && loopEndMs != null) {
+                    val startX = loopStartPos * canvasWidth
+                    val endX = loopEndPos * canvasWidth
+                    drawRect(
+                        color = loopRegionColor.copy(alpha = 0.2f),
+                        topLeft = Offset(startX, 0f),
+                        size = Size(endX - startX, canvasHeight)
+                    )
+                }
+
+                // Draw waveform bars
+                for (i in 0 until numBars) {
+                    val amplitude = if (waveformData.isNotEmpty()) {
+                        waveformData.getOrElse(i) { 0.3f }
+                    } else {
+                        // Generate fake waveform if no data
+                        0.3f + (kotlin.math.sin(i * 0.15f) * 0.3f) + (kotlin.random.Random.nextFloat() * 0.2f)
+                    }
+
+                    val barHeight = (amplitude * (canvasHeight - 20.dp.toPx()) * 0.9f).coerceAtLeast(4.dp.toPx())
+                    val x = i * barWidth + barGap / 2
+                    val position = i.toFloat() / numBars
+
+                    // Determine bar color
+                    val color = when {
+                        position <= currentPosition -> playedColor
+                        loopStartMs != null && loopEndMs != null &&
+                            position >= loopStartPos && position <= loopEndPos -> loopRegionColor.copy(alpha = 0.7f)
+                        else -> barColor.copy(alpha = 0.6f)
+                    }
+
+                    // Draw rounded bar (pill shape)
+                    drawRoundRect(
+                        color = color,
+                        topLeft = Offset(x, centerY - barHeight / 2),
+                        size = Size(actualBarWidth, barHeight),
+                        cornerRadius = CornerRadius(cornerRadius, cornerRadius)
+                    )
+                }
+
+                // Draw playhead (current position)
+                val playheadX = currentPosition * canvasWidth
+
+                // Playhead triangle at top
+                val trianglePath = Path().apply {
+                    moveTo(playheadX, 0f)
+                    lineTo(playheadX - 8.dp.toPx(), 0f)
+                    lineTo(playheadX, 12.dp.toPx())
+                    lineTo(playheadX + 8.dp.toPx(), 0f)
+                    close()
+                }
+                drawPath(trianglePath, Color.White, style = Fill)
+
+                // Playhead line
+                drawLine(
+                    color = Color.White,
+                    start = Offset(playheadX, 0f),
+                    end = Offset(playheadX, canvasHeight),
+                    strokeWidth = 2.dp.toPx()
+                )
+
+                // Draw A marker
+                if (loopStartMs != null) {
+                    val aX = loopStartPos * canvasWidth
+
+                    // A marker line
+                    drawLine(
+                        color = Color(0xFF00E5FF),
+                        start = Offset(aX, 0f),
+                        end = Offset(aX, canvasHeight),
+                        strokeWidth = 3.dp.toPx()
+                    )
+
+                    // A marker circle handle at top
+                    drawCircle(
+                        color = Color(0xFF00E5FF),
+                        radius = 10.dp.toPx(),
+                        center = Offset(aX, 15.dp.toPx())
+                    )
+
+                    // A marker circle handle at bottom
+                    drawCircle(
+                        color = Color(0xFF00E5FF),
+                        radius = 10.dp.toPx(),
+                        center = Offset(aX, canvasHeight - 15.dp.toPx())
+                    )
+                }
+
+                // Draw B marker
+                if (loopEndMs != null) {
+                    val bX = loopEndPos * canvasWidth
+
+                    // B marker line
+                    drawLine(
+                        color = Color(0xFFFFEA00),
+                        start = Offset(bX, 0f),
+                        end = Offset(bX, canvasHeight),
+                        strokeWidth = 3.dp.toPx()
+                    )
+
+                    // B marker circle handle at top
+                    drawCircle(
+                        color = Color(0xFFFFEA00),
+                        radius = 10.dp.toPx(),
+                        center = Offset(bX, 15.dp.toPx())
+                    )
+
+                    // B marker circle handle at bottom
+                    drawCircle(
+                        color = Color(0xFFFFEA00),
+                        radius = 10.dp.toPx(),
+                        center = Offset(bX, canvasHeight - 15.dp.toPx())
+                    )
+                }
+
+                // Draw current time at playhead position
+                val currentTimeMs = (currentPosition * durationMs).toLong()
+                val timeText = formatTimeMs(currentTimeMs)
+            }
+
+            // Current time label floating above playhead
+            val currentTimeMs = (currentPosition * durationMs).toLong()
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 4.dp)
+                    .background(Color.Black.copy(alpha = 0.7f), RoundedCornerShape(4.dp))
+                    .padding(horizontal = 8.dp, vertical = 2.dp)
+            ) {
+                Text(
+                    text = "${formatTimeMs(currentTimeMs)} / ${formatTimeMs(durationMs)}",
+                    color = Color.White,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // A-B Loop Controls Row
+        ABLoopControls(
+            loopStartMs = loopStartMs,
+            loopEndMs = loopEndMs,
+            durationMs = durationMs,
+            currentPosition = currentPosition,
+            onLoopStartChange = onLoopStartChange,
+            onLoopEndChange = onLoopEndChange,
+            onClearLoop = onClearLoop
+        )
+    }
+}
+
+@Composable
+private fun ABLoopControls(
+    loopStartMs: Long?,
+    loopEndMs: Long?,
+    durationMs: Long,
+    currentPosition: Float,
+    onLoopStartChange: (Long) -> Unit,
+    onLoopEndChange: (Long) -> Unit,
+    onClearLoop: () -> Unit
+) {
+    val finetuneStep = 100L  // 100ms steps
+    val loopDuration = if (loopStartMs != null && loopEndMs != null) loopEndMs - loopStartMs else 0L
+
+    // Hold-to-set state
+    var isHoldingA by remember { mutableStateOf(false) }
+    var isHoldingB by remember { mutableStateOf(false) }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // Loop time display with fine-tune controls
+        if (loopStartMs != null && loopEndMs != null) {
+            Column {
+                // A marker with fine-tune
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(
+                        onClick = { onLoopStartChange((loopStartMs - finetuneStep).coerceAtLeast(0)) },
+                        modifier = Modifier.size(24.dp)
+                    ) {
+                        Icon(Icons.Default.Remove, "A -100ms", Modifier.size(14.dp), tint = Color(0xFF00E5FF))
+                    }
+                    Text(
+                        text = "A: ${formatTimeWithMs(loopStartMs)}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color(0xFF00E5FF),
+                        fontWeight = FontWeight.Bold
+                    )
+                    IconButton(
+                        onClick = { onLoopStartChange((loopStartMs + finetuneStep).coerceAtMost(loopEndMs - 100)) },
+                        modifier = Modifier.size(24.dp)
+                    ) {
+                        Icon(Icons.Default.Add, "A +100ms", Modifier.size(14.dp), tint = Color(0xFF00E5FF))
+                    }
+                }
+
+                // B marker with fine-tune
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(
+                        onClick = { onLoopEndChange((loopEndMs - finetuneStep).coerceAtLeast(loopStartMs + 100)) },
+                        modifier = Modifier.size(24.dp)
+                    ) {
+                        Icon(Icons.Default.Remove, "B -100ms", Modifier.size(14.dp), tint = Color(0xFFFFEA00))
+                    }
+                    Text(
+                        text = "B: ${formatTimeWithMs(loopEndMs)}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color(0xFFFFEA00),
+                        fontWeight = FontWeight.Bold
+                    )
+                    IconButton(
+                        onClick = { onLoopEndChange((loopEndMs + finetuneStep).coerceAtMost(durationMs)) },
+                        modifier = Modifier.size(24.dp)
+                    ) {
+                        Icon(Icons.Default.Add, "B +100ms", Modifier.size(14.dp), tint = Color(0xFFFFEA00))
+                    }
+                }
+
+                // Duration
+                Text(
+                    text = "Loop: ${formatTimeWithMs(loopDuration)}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                    modifier = Modifier.padding(start = 24.dp)
+                )
+            }
+        } else {
+            Column {
+                Text(
+                    text = "HOLD A/B to set loop points",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = "Or tap waveform to seek",
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
+                )
+            }
+        }
+
+        // Main control buttons
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Skip backward (move loop back by its duration)
+            if (loopStartMs != null && loopEndMs != null && loopDuration > 0) {
+                IconButton(
+                    onClick = {
+                        val newStart = (loopStartMs - loopDuration).coerceAtLeast(0)
+                        val newEnd = (loopEndMs - loopDuration).coerceAtLeast(loopDuration)
+                        onLoopStartChange(newStart)
+                        onLoopEndChange(newEnd)
+                    },
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(Icons.Default.SkipPrevious, "Skip loop back", Modifier.size(18.dp), tint = Color(0xFFFF9800))
+                }
+            }
+
+            // Hold-to-set A button
+            Box(
+                modifier = Modifier
+                    .height(36.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(if (isHoldingA) Color(0xFF00E5FF) else Color(0xFF00E5FF).copy(alpha = 0.2f))
+                    .pointerInput(Unit) {
+                        awaitEachGesture {
+                            awaitFirstDown(requireUnconsumed = false)
+                            isHoldingA = true
+                            try {
+                                do {
+                                    val event = awaitPointerEvent()
+                                } while (event.changes.any { it.pressed })
+                            } finally {
+                                if (isHoldingA) {
+                                    val releaseTimeMs = (currentPosition * durationMs).toLong()
+                                    onLoopStartChange(releaseTimeMs)
+                                }
+                                isHoldingA = false
+                            }
+                        }
+                    }
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = if (isHoldingA) "▶ A" else "A",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp,
+                        color = if (isHoldingA) Color.Black else Color(0xFF00E5FF)
+                    )
+                    if (loopStartMs != null) {
+                        Text(" ✓", fontSize = 10.sp, color = if (isHoldingA) Color.Black else Color(0xFF00E5FF))
+                    }
+                }
+            }
+
+            // Hold-to-set B button
+            Box(
+                modifier = Modifier
+                    .height(36.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(if (isHoldingB) Color(0xFFFFEA00) else Color(0xFFFFEA00).copy(alpha = 0.2f))
+                    .pointerInput(Unit) {
+                        awaitEachGesture {
+                            awaitFirstDown(requireUnconsumed = false)
+                            isHoldingB = true
+                            try {
+                                do {
+                                    val event = awaitPointerEvent()
+                                } while (event.changes.any { it.pressed })
+                            } finally {
+                                if (isHoldingB) {
+                                    val releaseTimeMs = (currentPosition * durationMs).toLong()
+                                    if (loopStartMs == null || releaseTimeMs > loopStartMs) {
+                                        onLoopEndChange(releaseTimeMs)
+                                    } else {
+                                        onLoopEndChange(loopStartMs)
+                                        onLoopStartChange(releaseTimeMs)
+                                    }
+                                }
+                                isHoldingB = false
+                            }
+                        }
+                    }
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = if (isHoldingB) "▶ B" else "B",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp,
+                        color = if (isHoldingB) Color.Black else Color(0xFFFFEA00)
+                    )
+                    if (loopEndMs != null) {
+                        Text(" ✓", fontSize = 10.sp, color = if (isHoldingB) Color.Black else Color(0xFFFFEA00))
+                    }
+                }
+            }
+
+            // Skip forward
+            if (loopStartMs != null && loopEndMs != null && loopDuration > 0) {
+                IconButton(
+                    onClick = {
+                        val newStart = (loopStartMs + loopDuration).coerceAtMost(durationMs - loopDuration)
+                        val newEnd = (loopEndMs + loopDuration).coerceAtMost(durationMs)
+                        if (newEnd > newStart) {
+                            onLoopStartChange(newStart)
+                            onLoopEndChange(newEnd)
+                        }
+                    },
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(Icons.Default.SkipNext, "Skip loop forward", Modifier.size(18.dp), tint = Color(0xFFFF9800))
+                }
+            }
+
+            // Clear loop button
+            if (loopStartMs != null || loopEndMs != null) {
+                IconButton(onClick = onClearLoop, modifier = Modifier.size(32.dp)) {
+                    Icon(Icons.Default.Stop, "Clear Loop", Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error)
+                }
+            }
+        }
+    }
+}
+
+private fun formatTimeMs(ms: Long): String {
+    val totalSeconds = ms / 1000
+    val minutes = totalSeconds / 60
+    val seconds = totalSeconds % 60
+    return "%d:%02d".format(minutes, seconds)
+}
+
+private fun formatTimeWithMs(ms: Long): String {
+    val totalSeconds = ms / 1000
+    val minutes = totalSeconds / 60
+    val seconds = totalSeconds % 60
+    val centis = (ms % 1000) / 10
+    return "%d:%02d.%02d".format(minutes, seconds, centis)
+}
