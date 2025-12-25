@@ -929,62 +929,85 @@ class AudioBattleEngine @Inject constructor(
 
     // ----- RESET ALL TO DEFAULTS -----
 
+    /**
+     * Reset all audio effects to defaults WITHOUT stopping playback
+     * This only resets effect parameters, not the audio session
+     */
     fun resetAllToDefaults() {
-        // Reset compressor
-        _compressorEnabled.value = true
-        _compressorThreshold.value = -12f
-        _compressorRatio.value = 4f
-        _compressorAttack.value = 10f
-        _compressorRelease.value = 100f
-        _compressorMakeupGain.value = 6f
+        try {
+            // Reset state values ONLY (no audio session changes)
+            // Compressor
+            _compressorEnabled.value = true
+            _compressorThreshold.value = -12f
+            _compressorRatio.value = 4f
+            _compressorAttack.value = 10f
+            _compressorRelease.value = 100f
+            _compressorMakeupGain.value = 6f
 
-        // Reset limiter
-        _limiterEnabled.value = true
-        _limiterThreshold.value = -1f
-        _limiterCeiling.value = -0.1f
-        _limiterAttack.value = 1f
-        _limiterRelease.value = 50f
+            // Limiter
+            _limiterEnabled.value = true
+            _limiterThreshold.value = -1f
+            _limiterCeiling.value = -0.1f
+            _limiterAttack.value = 1f
+            _limiterRelease.value = 50f
 
-        // Reset bass
-        _bassLevel.value = 500
-        _bassFrequency.value = 80f
+            // Bass
+            _bassLevel.value = 500
+            _bassFrequency.value = 80f
 
-        // Reset stereo
-        _stereoWidthEnabled.value = false
-        _stereoWidth.value = 100
+            // Stereo
+            _stereoWidthEnabled.value = false
+            _stereoWidth.value = 100
 
-        // Reset exciter
-        _exciterEnabled.value = false
-        _exciterDrive.value = 30
-        _exciterMix.value = 50
+            // Exciter
+            _exciterEnabled.value = false
+            _exciterDrive.value = 30
+            _exciterMix.value = 50
 
-        // Reset reverb
-        _reverbEnabled.value = false
-        _reverbPreset.value = 0
+            // Reverb
+            _reverbEnabled.value = false
+            _reverbPreset.value = 0
 
-        // Reset main controls
-        _loudnessGain.value = 0
-        _clarityLevel.value = 50
-        _spatialLevel.value = 500
+            // Main controls
+            _loudnessGain.value = 0
+            _clarityLevel.value = 50
+            _spatialLevel.value = 500
 
-        // Apply resets
-        setBassBoost(500)
-        setLoudness(0)
-        setClarity(50)
-        setVirtualizer(500)
+            // Apply to effects SAFELY without affecting audio session
+            try {
+                bassBoost?.let { if (it.strengthSupported) it.setStrength(500) }
+            } catch (e: Exception) { Log.w(TAG, "Bass reset failed", e) }
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            updateDynamicsCompressor()
-            updateDynamicsLimiter()
-        }
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
+                    loudnessEnhancer?.setTargetGain(0)
+                }
+            } catch (e: Exception) { Log.w(TAG, "Loudness reset failed", e) }
 
-        // Reset EQ to flat
-        equalizer?.let { eq ->
-            for (band in 0 until eq.numberOfBands) {
-                eq.setBandLevel(band.toShort(), 0)
+            try {
+                virtualizer?.let { if (it.strengthSupported) it.setStrength(500) }
+            } catch (e: Exception) { Log.w(TAG, "Virtualizer reset failed", e) }
+
+            // Update dynamics processing safely
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                try { updateDynamicsCompressor() } catch (e: Exception) { Log.w(TAG, "Compressor reset failed", e) }
+                try { updateDynamicsLimiter() } catch (e: Exception) { Log.w(TAG, "Limiter reset failed", e) }
             }
+
+            // Reset EQ to flat safely
+            try {
+                equalizer?.let { eq ->
+                    for (band in 0 until eq.numberOfBands) {
+                        eq.setBandLevel(band.toShort(), 0)
+                    }
+                }
+                updateEQState()
+            } catch (e: Exception) { Log.w(TAG, "EQ reset failed", e) }
+
+            Log.d(TAG, "All effects reset to defaults")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error resetting effects", e)
         }
-        updateEQState()
     }
 
     // ==================== BATTLE PRESETS ====================

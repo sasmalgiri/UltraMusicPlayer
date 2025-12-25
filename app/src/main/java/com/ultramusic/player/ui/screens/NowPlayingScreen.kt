@@ -40,6 +40,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -139,6 +142,9 @@ fun NowPlayingScreen(
     val exciterMix by viewModel.exciterMix.collectAsState()
     val reverbEnabled by viewModel.reverbEnabled.collectAsState()
     val reverbPreset by viewModel.reverbPreset.collectAsState()
+
+    // Waveform height state (adjustable 30-200 dp)
+    var waveformHeight by remember { mutableIntStateOf(80) }
 
     val song = playbackState.currentSong
 
@@ -270,6 +276,8 @@ fun NowPlayingScreen(
                     isExtractingWaveform = isExtractingWaveform,
                     abLoopStart = playbackState.abLoopStart,
                     abLoopEnd = playbackState.abLoopEnd,
+                    waveformHeight = waveformHeight,
+                    onWaveformHeightChange = { newHeight -> waveformHeight = newHeight },
                     onTogglePlayPause = { viewModel.togglePlayPause() },
                     onPrevious = { viewModel.playPrevious() },
                     onNext = { viewModel.playNext() },
@@ -450,6 +458,8 @@ private fun CompactNowPlayingSection(
     isExtractingWaveform: Boolean,
     abLoopStart: Long?,
     abLoopEnd: Long?,
+    waveformHeight: Int,
+    onWaveformHeightChange: (Int) -> Unit,
     onTogglePlayPause: () -> Unit,
     onPrevious: () -> Unit,
     onNext: () -> Unit,
@@ -632,8 +642,41 @@ private fun CompactNowPlayingSection(
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        // Waveform or progress bar
+        // Waveform height control + waveform
         if (waveformData.isNotEmpty()) {
+            // Height adjustment row
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Wave",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                IconButton(
+                    onClick = { onWaveformHeightChange((waveformHeight - 20).coerceAtLeast(30)) },
+                    modifier = Modifier.size(24.dp)
+                ) {
+                    Text("-", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+                }
+                Text(
+                    text = "${waveformHeight}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.width(28.dp),
+                    textAlign = TextAlign.Center
+                )
+                IconButton(
+                    onClick = { onWaveformHeightChange((waveformHeight + 20).coerceAtMost(200)) },
+                    modifier = Modifier.size(24.dp)
+                ) {
+                    Text("+", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+                }
+            }
+
             WaveformVisualizer(
                 waveformData = waveformData,
                 currentPosition = progress,
@@ -649,7 +692,7 @@ private fun CompactNowPlayingSection(
                 estimatedBpm = estimatedBpm ?: 0f,
                 showBeatMarkers = true,
                 modifier = Modifier.fillMaxWidth(),
-                height = 50.dp
+                height = waveformHeight.dp
             )
         } else {
             // Progress info while loading
