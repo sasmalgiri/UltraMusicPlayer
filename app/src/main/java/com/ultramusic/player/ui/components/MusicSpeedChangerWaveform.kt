@@ -59,8 +59,8 @@ import kotlin.math.max
  * Features:
  * - Simple rounded bar visualization
  * - Clean A-B markers with draggable handles
+ * - Draggable playhead with floating timestamp
  * - Smooth seek functionality
- * - No complex zoom/pan - just clean waveform
  */
 @Composable
 fun MusicSpeedChangerWaveform(
@@ -82,39 +82,99 @@ fun MusicSpeedChangerWaveform(
 ) {
     var isDraggingA by remember { mutableStateOf(false) }
     var isDraggingB by remember { mutableStateOf(false) }
+    var isDraggingPlayhead by remember { mutableStateOf(false) }
+    var dragPosition by remember { mutableFloatStateOf(currentPosition) }
+
+    // Update drag position when not dragging
+    if (!isDraggingPlayhead) {
+        dragPosition = currentPosition
+    }
 
     val loopStartPos = loopStartMs?.let { it.toFloat() / durationMs } ?: 0f
     val loopEndPos = loopEndMs?.let { it.toFloat() / durationMs } ?: 1f
 
+    // Drag detection threshold (percentage of width) for A/B markers
+    val markerDragThreshold = 0.08f  // 8% for A/B markers
+
     Column(modifier = modifier) {
-        // Waveform canvas
+        // Waveform canvas with floating timestamp
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(height)
+                .height(height + 24.dp)  // Extra space for floating timestamp
                 .clip(RoundedCornerShape(12.dp))
-                .background(backgroundColor)
         ) {
+            // Floating timestamp that follows playhead
+            val displayPosition = if (isDraggingPlayhead) dragPosition else currentPosition
+            val displayTimeMs = (displayPosition * durationMs).toLong()
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(24.dp)
+                    .background(Color.Transparent)
+            ) {
+                // Calculate offset for the timestamp pill
+                val offsetFraction = displayPosition.coerceIn(0.05f, 0.95f)
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(offsetFraction)
+                        .align(Alignment.CenterStart)
+                ) {
+                    Surface(
+                        modifier = Modifier.align(Alignment.CenterEnd),
+                        shape = RoundedCornerShape(6.dp),
+                        color = if (isDraggingPlayhead) Color(0xFF00E676) else Color.White,
+                        shadowElevation = 4.dp
+                    ) {
+                        Text(
+                            text = formatTimeMs(displayTimeMs),
+                            color = Color.Black,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                        )
+                    }
+                }
+            }
+
+            // Main waveform canvas
             Canvas(
                 modifier = Modifier
-                    .fillMaxSize()
+                    .fillMaxWidth()
+                    .height(height)
+                    .align(Alignment.BottomCenter)
+                    .background(backgroundColor, RoundedCornerShape(12.dp))
                     .pointerInput(Unit) {
                         detectTapGestures { offset ->
                             val pos = (offset.x / size.width).coerceIn(0f, 1f)
                             onSeek(pos)
                         }
                     }
-                    .pointerInput(loopStartMs, loopEndMs) {
+                    .pointerInput(loopStartMs, loopEndMs, currentPosition) {
                         detectDragGestures(
                             onDragStart = { offset ->
                                 val pos = offset.x / size.width
                                 val distToA = if (loopStartMs != null) abs(pos - loopStartPos) else 1f
                                 val distToB = if (loopEndMs != null) abs(pos - loopEndPos) else 1f
+                                val distToPlayhead = abs(pos - currentPosition)
 
                                 when {
-                                    distToA < 0.05f && distToA <= distToB -> isDraggingA = true
-                                    distToB < 0.05f -> isDraggingB = true
-                                    else -> onSeek(pos.coerceIn(0f, 1f))
+                                    // A marker has priority if very close
+                                    distToA < markerDragThreshold && distToA <= distToB && distToA <= distToPlayhead -> {
+                                        isDraggingA = true
+                                    }
+                                    // B marker
+                                    distToB < markerDragThreshold && distToB < distToA && distToB <= distToPlayhead -> {
+                                        isDraggingB = true
+                                    }
+                                    // Playhead is draggable anywhere else
+                                    else -> {
+                                        isDraggingPlayhead = true
+                                        dragPosition = pos.coerceIn(0f, 1f)
+                                        onSeek(dragPosition)
+                                    }
                                 }
                             },
                             onDrag = { change, _ ->
@@ -130,11 +190,16 @@ fun MusicSpeedChangerWaveform(
                                         val newPos = pos.coerceIn(minPos, 1f)
                                         onLoopEndChange((newPos * durationMs).toLong())
                                     }
+                                    isDraggingPlayhead -> {
+                                        dragPosition = pos
+                                        onSeek(pos)
+                                    }
                                 }
                             },
                             onDragEnd = {
                                 isDraggingA = false
                                 isDraggingB = false
+                                isDraggingPlayhead = false
                             }
                         )
                     }
@@ -191,28 +256,7 @@ fun MusicSpeedChangerWaveform(
                     )
                 }
 
-                // Draw playhead (current position)
-                val playheadX = currentPosition * canvasWidth
-
-                // Playhead triangle at top
-                val trianglePath = Path().apply {
-                    moveTo(playheadX, 0f)
-                    lineTo(playheadX - 8.dp.toPx(), 0f)
-                    lineTo(playheadX, 12.dp.toPx())
-                    lineTo(playheadX + 8.dp.toPx(), 0f)
-                    close()
-                }
-                drawPath(trianglePath, Color.White, style = Fill)
-
-                // Playhead line
-                drawLine(
-                    color = Color.White,
-                    start = Offset(playheadX, 0f),
-                    end = Offset(playheadX, canvasHeight),
-                    strokeWidth = 2.dp.toPx()
-                )
-
-                // Draw A marker
+                // Draw A marker (behind playhead)
                 if (loopStartMs != null) {
                     val aX = loopStartPos * canvasWidth
 
@@ -224,18 +268,30 @@ fun MusicSpeedChangerWaveform(
                         strokeWidth = 3.dp.toPx()
                     )
 
-                    // A marker circle handle at top
+                    // A marker circle handle at top (larger for easier drag)
                     drawCircle(
                         color = Color(0xFF00E5FF),
-                        radius = 10.dp.toPx(),
-                        center = Offset(aX, 15.dp.toPx())
+                        radius = 12.dp.toPx(),
+                        center = Offset(aX, 14.dp.toPx())
+                    )
+                    // Inner circle
+                    drawCircle(
+                        color = Color.White,
+                        radius = 6.dp.toPx(),
+                        center = Offset(aX, 14.dp.toPx())
                     )
 
-                    // A marker circle handle at bottom
+                    // A marker circle handle at bottom (larger for easier drag)
                     drawCircle(
                         color = Color(0xFF00E5FF),
-                        radius = 10.dp.toPx(),
-                        center = Offset(aX, canvasHeight - 15.dp.toPx())
+                        radius = 12.dp.toPx(),
+                        center = Offset(aX, canvasHeight - 14.dp.toPx())
+                    )
+                    // Inner circle
+                    drawCircle(
+                        color = Color.White,
+                        radius = 6.dp.toPx(),
+                        center = Offset(aX, canvasHeight - 14.dp.toPx())
                     )
                 }
 
@@ -251,39 +307,81 @@ fun MusicSpeedChangerWaveform(
                         strokeWidth = 3.dp.toPx()
                     )
 
-                    // B marker circle handle at top
+                    // B marker circle handle at top (larger for easier drag)
                     drawCircle(
                         color = Color(0xFFFFEA00),
-                        radius = 10.dp.toPx(),
-                        center = Offset(bX, 15.dp.toPx())
+                        radius = 12.dp.toPx(),
+                        center = Offset(bX, 14.dp.toPx())
+                    )
+                    // Inner circle
+                    drawCircle(
+                        color = Color.Black,
+                        radius = 6.dp.toPx(),
+                        center = Offset(bX, 14.dp.toPx())
                     )
 
-                    // B marker circle handle at bottom
+                    // B marker circle handle at bottom (larger for easier drag)
                     drawCircle(
                         color = Color(0xFFFFEA00),
-                        radius = 10.dp.toPx(),
-                        center = Offset(bX, canvasHeight - 15.dp.toPx())
+                        radius = 12.dp.toPx(),
+                        center = Offset(bX, canvasHeight - 14.dp.toPx())
+                    )
+                    // Inner circle
+                    drawCircle(
+                        color = Color.Black,
+                        radius = 6.dp.toPx(),
+                        center = Offset(bX, canvasHeight - 14.dp.toPx())
                     )
                 }
 
-                // Draw current time at playhead position
-                val currentTimeMs = (currentPosition * durationMs).toLong()
-                val timeText = formatTimeMs(currentTimeMs)
+                // Draw playhead (current position) - ON TOP of markers
+                val playheadX = displayPosition * canvasWidth
+                val playheadColor = if (isDraggingPlayhead) Color(0xFF00E676) else Color.White
+
+                // Playhead line (thicker for visibility)
+                drawLine(
+                    color = playheadColor,
+                    start = Offset(playheadX, 0f),
+                    end = Offset(playheadX, canvasHeight),
+                    strokeWidth = 3.dp.toPx()
+                )
+
+                // Large draggable handle at top (triangle pointing down)
+                val triangleSize = 14.dp.toPx()
+                val trianglePath = Path().apply {
+                    moveTo(playheadX - triangleSize, 0f)
+                    lineTo(playheadX + triangleSize, 0f)
+                    lineTo(playheadX, triangleSize)
+                    close()
+                }
+                drawPath(trianglePath, playheadColor, style = Fill)
+
+                // Large draggable handle at bottom (circle)
+                drawCircle(
+                    color = playheadColor,
+                    radius = 10.dp.toPx(),
+                    center = Offset(playheadX, canvasHeight - 12.dp.toPx())
+                )
+                // Inner dot
+                drawCircle(
+                    color = Color.Black,
+                    radius = 4.dp.toPx(),
+                    center = Offset(playheadX, canvasHeight - 12.dp.toPx())
+                )
             }
 
-            // Current time label floating above playhead
-            val currentTimeMs = (currentPosition * durationMs).toLong()
+            // Duration label at bottom right corner
             Box(
                 modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 4.dp)
-                    .background(Color.Black.copy(alpha = 0.7f), RoundedCornerShape(4.dp))
-                    .padding(horizontal = 8.dp, vertical = 2.dp)
+                    .align(Alignment.BottomEnd)
+                    .padding(4.dp)
+                    .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(4.dp))
+                    .padding(horizontal = 6.dp, vertical = 2.dp)
             ) {
                 Text(
-                    text = "${formatTimeMs(currentTimeMs)} / ${formatTimeMs(durationMs)}",
-                    color = Color.White,
-                    fontSize = 11.sp,
+                    text = formatTimeMs(durationMs),
+                    color = Color.White.copy(alpha = 0.8f),
+                    fontSize = 10.sp,
                     fontWeight = FontWeight.Medium
                 )
             }
