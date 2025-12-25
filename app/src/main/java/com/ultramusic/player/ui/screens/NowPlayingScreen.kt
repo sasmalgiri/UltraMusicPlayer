@@ -13,7 +13,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.MusicNote
@@ -53,6 +55,7 @@ import com.ultramusic.player.audio.BeatMarker
 import com.ultramusic.player.data.AudioPreset
 import com.ultramusic.player.data.Song
 import com.ultramusic.player.ui.MainViewModel
+import com.ultramusic.player.ui.components.BattleControlsPanel
 import com.ultramusic.player.ui.components.CompactFolderPanel
 import com.ultramusic.player.ui.components.SmartPlaylistPanel
 import com.ultramusic.player.ui.components.UnifiedControlsPanel
@@ -91,6 +94,51 @@ fun NowPlayingScreen(
     val currentFolderPath by viewModel.currentFolderPath.collectAsState()
     val browseItems by viewModel.browseItems.collectAsState()
     val breadcrumbs by viewModel.breadcrumbs.collectAsState()
+
+    // Battle controls state - Core
+    val battleEngineEnabled by viewModel.battleEngineEnabled.collectAsState()
+    val battleMode by viewModel.battleMode.collectAsState()
+    val dangerModeEnabled by viewModel.dangerModeEnabled.collectAsState()
+    val ourSPL by viewModel.ourSPL.collectAsState()
+    val opponentSPL by viewModel.opponentSPL.collectAsState()
+    val currentPeakDb by viewModel.currentPeakDb.collectAsState()
+    val isClipping by viewModel.isClipping.collectAsState()
+    val profileSlotA by viewModel.profileSlotA.collectAsState()
+    val profileSlotB by viewModel.profileSlotB.collectAsState()
+    val profileSlotC by viewModel.profileSlotC.collectAsState()
+    val activeProfileSlot by viewModel.activeProfileSlot.collectAsState()
+
+    // Battle controls - Main sliders
+    val battleBassLevel by viewModel.battleBassLevel.collectAsState()
+    val bassFrequency by viewModel.bassFrequency.collectAsState()
+    val battleLoudness by viewModel.battleLoudness.collectAsState()
+    val battleClarity by viewModel.battleClarity.collectAsState()
+    val battleSpatial by viewModel.battleSpatial.collectAsState()
+    val battleEQBands by viewModel.battleEQBands.collectAsState()
+
+    // Battle controls - Compressor
+    val compressorEnabled by viewModel.compressorEnabled.collectAsState()
+    val compressorThreshold by viewModel.compressorThreshold.collectAsState()
+    val compressorRatio by viewModel.compressorRatio.collectAsState()
+    val compressorAttack by viewModel.compressorAttack.collectAsState()
+    val compressorRelease by viewModel.compressorRelease.collectAsState()
+    val compressorMakeupGain by viewModel.compressorMakeupGain.collectAsState()
+
+    // Battle controls - Limiter
+    val limiterEnabled by viewModel.limiterEnabled.collectAsState()
+    val limiterThreshold by viewModel.limiterThreshold.collectAsState()
+    val limiterCeiling by viewModel.limiterCeiling.collectAsState()
+    val limiterAttack by viewModel.limiterAttack.collectAsState()
+    val limiterRelease by viewModel.limiterRelease.collectAsState()
+
+    // Battle controls - Stereo, Exciter, Reverb
+    val stereoWidthEnabled by viewModel.stereoWidthEnabled.collectAsState()
+    val stereoWidth by viewModel.stereoWidth.collectAsState()
+    val exciterEnabled by viewModel.exciterEnabled.collectAsState()
+    val exciterDrive by viewModel.exciterDrive.collectAsState()
+    val exciterMix by viewModel.exciterMix.collectAsState()
+    val reverbEnabled by viewModel.reverbEnabled.collectAsState()
+    val reverbPreset by viewModel.reverbPreset.collectAsState()
 
     val song = playbackState.currentSong
 
@@ -236,37 +284,146 @@ fun NowPlayingScreen(
                         .weight(0.25f) // 25% of screen for Now Playing
                 )
 
-                // ==================== BOTTOM SECTION: UNIFIED CONTROLS ====================
-                UnifiedControlsPanel(
-                    // Speed & Pitch
-                    speed = playbackState.speed,
-                    pitch = playbackState.pitch,
-                    onSpeedChange = { viewModel.setSpeed(it) },
-                    onPitchChange = { viewModel.setPitch(it) },
-                    onResetSpeed = { viewModel.resetSpeed() },
-                    onResetPitch = { viewModel.resetPitch() },
-                    onResetAll = { viewModel.resetAll() },
-                    // A-B Loop
-                    abLoopStart = playbackState.abLoopStart,
-                    abLoopEnd = playbackState.abLoopEnd,
-                    currentPosition = playbackState.currentPosition,
-                    duration = playbackState.duration,
-                    onSetLoopStart = { viewModel.setABLoopStart() },
-                    onSetLoopEnd = { viewModel.setABLoopEnd() },
-                    onClearLoop = { viewModel.clearABLoop() },
-                    onSaveToArmory = {
-                        playbackState.currentSong?.let { currentSong ->
-                            val start = playbackState.abLoopStart ?: 0
-                            val end = playbackState.abLoopEnd ?: currentSong.duration
-                            viewModel.saveClipToArmory(currentSong, start, end)
-                        }
-                    },
-                    // Presets
-                    presets = AudioPreset.PRESETS,
-                    selectedPreset = uiState.selectedPreset,
-                    onPresetSelected = { viewModel.applyPreset(it) },
-                    modifier = Modifier.weight(0.30f) // 30% of screen for Controls
-                )
+                // ==================== BOTTOM SECTION: SCROLLABLE CONTROLS + BATTLE ====================
+                val scrollState = rememberScrollState()
+
+                Column(
+                    modifier = Modifier
+                        .weight(0.30f) // 30% of screen for Controls
+                        .verticalScroll(scrollState)
+                ) {
+                    // Unified Controls Panel (Speed, Pitch, A-B Loop, Presets)
+                    UnifiedControlsPanel(
+                        // Speed & Pitch
+                        speed = playbackState.speed,
+                        pitch = playbackState.pitch,
+                        onSpeedChange = { viewModel.setSpeed(it) },
+                        onPitchChange = { viewModel.setPitch(it) },
+                        onResetSpeed = { viewModel.resetSpeed() },
+                        onResetPitch = { viewModel.resetPitch() },
+                        onResetAll = { viewModel.resetAll() },
+                        // A-B Loop
+                        abLoopStart = playbackState.abLoopStart,
+                        abLoopEnd = playbackState.abLoopEnd,
+                        currentPosition = playbackState.currentPosition,
+                        duration = playbackState.duration,
+                        onSetLoopStart = { viewModel.setABLoopStart() },
+                        onSetLoopEnd = { viewModel.setABLoopEnd() },
+                        onClearLoop = { viewModel.clearABLoop() },
+                        onSaveToArmory = {
+                            playbackState.currentSong?.let { currentSong ->
+                                val start = playbackState.abLoopStart ?: 0
+                                val end = playbackState.abLoopEnd ?: currentSong.duration
+                                viewModel.saveClipToArmory(currentSong, start, end)
+                            }
+                        },
+                        // Presets
+                        presets = AudioPreset.PRESETS,
+                        selectedPreset = uiState.selectedPreset,
+                        onPresetSelected = { viewModel.applyPreset(it) },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    // Divider before Battle Controls
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(1.dp)
+                            .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Battle Controls Panel - FULL controls like AudioBattleScreen
+                    BattleControlsPanel(
+                        // Core state
+                        isEnabled = battleEngineEnabled,
+                        battleMode = battleMode,
+                        dangerModeEnabled = dangerModeEnabled,
+                        // SPL meters
+                        ourSPL = ourSPL,
+                        opponentSPL = opponentSPL,
+                        currentPeakDb = currentPeakDb,
+                        isClipping = isClipping,
+                        // Quick profiles
+                        profileSlotA = profileSlotA,
+                        profileSlotB = profileSlotB,
+                        profileSlotC = profileSlotC,
+                        activeProfileSlot = activeProfileSlot,
+                        // Main controls
+                        bassLevel = battleBassLevel,
+                        bassFrequency = bassFrequency,
+                        loudnessGain = battleLoudness,
+                        clarityLevel = battleClarity,
+                        spatialLevel = battleSpatial,
+                        eqBands = battleEQBands,
+                        // Compressor
+                        compressorEnabled = compressorEnabled,
+                        compressorThreshold = compressorThreshold,
+                        compressorRatio = compressorRatio,
+                        compressorAttack = compressorAttack,
+                        compressorRelease = compressorRelease,
+                        compressorMakeupGain = compressorMakeupGain,
+                        // Limiter
+                        limiterEnabled = limiterEnabled,
+                        limiterThreshold = limiterThreshold,
+                        limiterCeiling = limiterCeiling,
+                        limiterAttack = limiterAttack,
+                        limiterRelease = limiterRelease,
+                        // Stereo
+                        stereoWidthEnabled = stereoWidthEnabled,
+                        stereoWidth = stereoWidth,
+                        // Exciter
+                        exciterEnabled = exciterEnabled,
+                        exciterDrive = exciterDrive,
+                        exciterMix = exciterMix,
+                        // Reverb
+                        reverbEnabled = reverbEnabled,
+                        reverbPreset = reverbPreset,
+                        // Core callbacks
+                        onToggleBattleEngine = { viewModel.toggleBattleEngine() },
+                        onBattleModeChange = { viewModel.setBattleMode(it) },
+                        onDangerModeChange = { viewModel.setDangerModeEnabled(it) },
+                        onEmergencyBass = { viewModel.emergencyBassBoost() },
+                        onCutThrough = { viewModel.cutThrough() },
+                        onGoNuclear = { viewModel.goNuclear() },
+                        onSaveProfileSlot = { viewModel.saveToProfileSlot(it) },
+                        onLoadProfileSlot = { viewModel.loadFromProfileSlot(it) },
+                        onClearProfileSlot = { viewModel.clearProfileSlot(it) },
+                        onResetAll = { viewModel.resetAllAudioEffects() },
+                        // Main control callbacks
+                        onBassChange = { viewModel.setBattleBass(it) },
+                        onBassFrequencyChange = { viewModel.setBassFrequency(it) },
+                        onLoudnessChange = { viewModel.setBattleLoudness(it) },
+                        onClarityChange = { viewModel.setBattleClarity(it) },
+                        onSpatialChange = { viewModel.setBattleSpatial(it) },
+                        onEQBandChange = { bandIndex, level -> viewModel.setBattleEQBand(bandIndex, level) },
+                        // Compressor callbacks
+                        onCompressorEnabledChange = { viewModel.setCompressorEnabled(it) },
+                        onCompressorThresholdChange = { viewModel.setCompressorThreshold(it) },
+                        onCompressorRatioChange = { viewModel.setCompressorRatio(it) },
+                        onCompressorAttackChange = { viewModel.setCompressorAttack(it) },
+                        onCompressorReleaseChange = { viewModel.setCompressorRelease(it) },
+                        onCompressorMakeupGainChange = { viewModel.setCompressorMakeupGain(it) },
+                        // Limiter callbacks
+                        onLimiterEnabledChange = { viewModel.setLimiterEnabled(it) },
+                        onLimiterThresholdChange = { viewModel.setLimiterThreshold(it) },
+                        onLimiterCeilingChange = { viewModel.setLimiterCeiling(it) },
+                        onLimiterAttackChange = { viewModel.setLimiterAttack(it) },
+                        onLimiterReleaseChange = { viewModel.setLimiterRelease(it) },
+                        // Stereo callbacks
+                        onStereoEnabledChange = { viewModel.setStereoWidthEnabled(it) },
+                        onStereoWidthChange = { viewModel.setStereoWidth(it) },
+                        // Exciter callbacks
+                        onExciterEnabledChange = { viewModel.setExciterEnabled(it) },
+                        onExciterDriveChange = { viewModel.setExciterDrive(it) },
+                        onExciterMixChange = { viewModel.setExciterMix(it) },
+                        // Reverb callbacks
+                        onReverbEnabledChange = { viewModel.setReverbEnabled(it) },
+                        onReverbPresetChange = { viewModel.setReverbPreset(it) },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
             }
         }
     }
