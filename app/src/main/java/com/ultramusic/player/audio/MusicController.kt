@@ -79,20 +79,49 @@ class MusicController @Inject constructor(
     // Player listener - MUST be defined before init block
     private val playerListener = object : Player.Listener {
         override fun onPlaybackStateChanged(state: Int) {
+            android.util.Log.d(TAG, "Playback state changed: $state")
             when (state) {
                 Player.STATE_READY -> {
+                    android.util.Log.d(TAG, "Player STATE_READY - starting playback")
                     updatePlaybackState()
                     startProgressUpdates()
                 }
                 Player.STATE_ENDED -> {
+                    android.util.Log.d(TAG, "Player STATE_ENDED")
                     handlePlaybackEnded()
+                }
+                Player.STATE_BUFFERING -> {
+                    android.util.Log.d(TAG, "Player STATE_BUFFERING")
+                }
+                Player.STATE_IDLE -> {
+                    android.util.Log.d(TAG, "Player STATE_IDLE")
                 }
             }
         }
 
         override fun onIsPlayingChanged(isPlaying: Boolean) {
+            android.util.Log.d(TAG, "isPlaying changed: $isPlaying")
             _playbackState.value = _playbackState.value.copy(isPlaying = isPlaying)
             if (isPlaying) startProgressUpdates() else stopProgressUpdates()
+        }
+
+        override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+            android.util.Log.e(TAG, "Player error: ${error.errorCode} - ${error.message}", error)
+            // Try to provide more context
+            when (error.errorCode) {
+                androidx.media3.common.PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND -> {
+                    android.util.Log.e(TAG, "File not found - check URI permissions")
+                }
+                androidx.media3.common.PlaybackException.ERROR_CODE_IO_NO_PERMISSION -> {
+                    android.util.Log.e(TAG, "No permission to read file")
+                }
+                androidx.media3.common.PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED -> {
+                    android.util.Log.e(TAG, "Unsupported audio format")
+                }
+                else -> {
+                    android.util.Log.e(TAG, "Unknown error code: ${error.errorCode}")
+                }
+            }
         }
     }
 

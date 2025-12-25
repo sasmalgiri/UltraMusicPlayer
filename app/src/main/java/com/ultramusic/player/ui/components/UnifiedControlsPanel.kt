@@ -246,7 +246,7 @@ private fun SpeedSection(
     }
 
     Column {
-        // Header row
+        // Header row with label
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -267,39 +267,78 @@ private fun SpeedSection(
                 )
             }
 
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = String.format("%.2fx", speed),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = speedColor
-                )
-                if (speed != 1.0f) {
-                    Spacer(modifier = Modifier.width(8.dp))
-                    OutlinedButton(
-                        onClick = onReset,
-                        modifier = Modifier.height(24.dp),
-                        contentPadding = ButtonDefaults.TextButtonContentPadding
-                    ) {
-                        Text("1.0x", fontSize = 10.sp)
-                    }
+            if (speed != 1.0f) {
+                OutlinedButton(
+                    onClick = onReset,
+                    modifier = Modifier.height(24.dp),
+                    contentPadding = ButtonDefaults.TextButtonContentPadding
+                ) {
+                    Text("Reset", fontSize = 10.sp)
                 }
             }
         }
 
         Spacer(modifier = Modifier.height(4.dp))
 
-        // Slider
-        Slider(
-            value = speed,
-            onValueChange = onSpeedChange,
-            valueRange = UltraMusicApp.MIN_SPEED..UltraMusicApp.MAX_SPEED,
+        // Slider with value labels
+        Row(
             modifier = Modifier.fillMaxWidth(),
-            colors = SliderDefaults.colors(
-                thumbColor = speedColor,
-                activeTrackColor = speedColor
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Min value label
+            Text(
+                text = "0.05x",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.width(40.dp)
             )
-        )
+
+            // Slider with current value box
+            Box(
+                modifier = Modifier.weight(1f)
+            ) {
+                Slider(
+                    value = speed,
+                    onValueChange = onSpeedChange,
+                    valueRange = UltraMusicApp.MIN_SPEED..UltraMusicApp.MAX_SPEED,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = SliderDefaults.colors(
+                        thumbColor = speedColor,
+                        activeTrackColor = speedColor
+                    )
+                )
+            }
+
+            // Max value label
+            Text(
+                text = "10x",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.width(32.dp),
+                textAlign = TextAlign.End
+            )
+        }
+
+        // CURRENT VALUE - Always visible, centered, prominent
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    speedColor.copy(alpha = 0.15f),
+                    RoundedCornerShape(8.dp)
+                )
+                .padding(vertical = 6.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = String.format("%.2fx", speed),
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                color = speedColor
+            )
+        }
+
+        Spacer(modifier = Modifier.height(6.dp))
 
         // Quick buttons
         Row(
@@ -332,7 +371,7 @@ private fun PitchSection(
     }
 
     Column {
-        // Header row
+        // Header row with label
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -351,40 +390,79 @@ private fun PitchSection(
                 )
             }
 
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                val sign = if (pitch > 0) "+" else ""
-                Text(
-                    text = "${sign}${String.format("%.1f", pitch)} st",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = pitchColor
-                )
-                if (pitch != 0f) {
-                    Spacer(modifier = Modifier.width(8.dp))
-                    OutlinedButton(
-                        onClick = onReset,
-                        modifier = Modifier.height(24.dp),
-                        contentPadding = ButtonDefaults.TextButtonContentPadding
-                    ) {
-                        Text("0", fontSize = 10.sp)
-                    }
+            if (pitch != 0f) {
+                OutlinedButton(
+                    onClick = onReset,
+                    modifier = Modifier.height(24.dp),
+                    contentPadding = ButtonDefaults.TextButtonContentPadding
+                ) {
+                    Text("Reset", fontSize = 10.sp)
                 }
             }
         }
 
         Spacer(modifier = Modifier.height(4.dp))
 
-        // Slider
-        Slider(
-            value = pitch,
-            onValueChange = onPitchChange,
-            valueRange = UltraMusicApp.MIN_PITCH_SEMITONES..UltraMusicApp.MAX_PITCH_SEMITONES,
+        // Slider with value labels
+        Row(
             modifier = Modifier.fillMaxWidth(),
-            colors = SliderDefaults.colors(
-                thumbColor = pitchColor,
-                activeTrackColor = pitchColor
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Min value label
+            Text(
+                text = "-36",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.width(32.dp)
             )
-        )
+
+            // Slider
+            Box(
+                modifier = Modifier.weight(1f)
+            ) {
+                Slider(
+                    value = pitch,
+                    onValueChange = onPitchChange,
+                    valueRange = UltraMusicApp.MIN_PITCH_SEMITONES..UltraMusicApp.MAX_PITCH_SEMITONES,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = SliderDefaults.colors(
+                        thumbColor = pitchColor,
+                        activeTrackColor = pitchColor
+                    )
+                )
+            }
+
+            // Max value label
+            Text(
+                text = "+36",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.width(32.dp),
+                textAlign = TextAlign.End
+            )
+        }
+
+        // CURRENT VALUE - Always visible, centered, prominent
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    pitchColor.copy(alpha = 0.15f),
+                    RoundedCornerShape(8.dp)
+                )
+                .padding(vertical = 6.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            val sign = if (pitch > 0) "+" else ""
+            Text(
+                text = "${sign}${String.format("%.1f", pitch)} semitones",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                color = pitchColor
+            )
+        }
+
+        Spacer(modifier = Modifier.height(6.dp))
 
         // Quick buttons
         Row(

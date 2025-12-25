@@ -1099,7 +1099,18 @@ class MainViewModel @Inject constructor(
     fun endPlaylistAddingMode() {
         smartPlaylistManager.endAddingMode()
     }
-    
+
+    /**
+     * Toggle adding mode - switches between search mode and normal playlist view
+     */
+    fun togglePlaylistAddingMode() {
+        if (isPlaylistAddingMode.value) {
+            smartPlaylistManager.endAddingMode()
+        } else {
+            smartPlaylistManager.startAddingMode()
+        }
+    }
+
     /**
      * Update search query with real-time narrowing results
      */

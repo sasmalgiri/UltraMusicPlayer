@@ -68,11 +68,11 @@ class AudioFocusManager @Inject constructor(
 
     // Dominant mode (DJ Mode) - when enabled, we IGNORE ALL focus loss events
     // The app keeps playing through calls, notifications, everything!
-    // Load from prefs on startup
-    private var dominantModeEnabled = prefs.getBoolean(KEY_DOMINANT_MODE, false)
+    // Load from prefs on startup - DEFAULT TO TRUE for better UX (music shouldn't stop randomly)
+    private var dominantModeEnabled = prefs.getBoolean(KEY_DOMINANT_MODE, true)
 
     // Expose dominant mode state for UI
-    private val _isDominantMode = MutableStateFlow(prefs.getBoolean(KEY_DOMINANT_MODE, false))
+    private val _isDominantMode = MutableStateFlow(prefs.getBoolean(KEY_DOMINANT_MODE, true))
     val isDominantMode: StateFlow<Boolean> = _isDominantMode.asStateFlow()
 
     // Remember if we were playing before losing focus

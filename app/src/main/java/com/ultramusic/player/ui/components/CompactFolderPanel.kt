@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Queue
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -59,7 +60,8 @@ fun CompactFolderPanel(
     onNavigateToPath: (String) -> Unit,
     onNavigateUp: () -> Unit,
     onPlaySong: (Song) -> Unit,
-    onAddToQueue: (Song) -> Unit,
+    onPlayNext: (Song) -> Unit,
+    onAddToEnd: (Song) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -192,7 +194,8 @@ fun CompactFolderPanel(
                                 song = item.song,
                                 isPlaying = item.song.id == currentSongId,
                                 onPlay = { onPlaySong(item.song) },
-                                onAddToQueue = { onAddToQueue(item.song) }
+                                onPlayNext = { onPlayNext(item.song) },
+                                onAddToEnd = { onAddToEnd(item.song) }
                             )
                         }
                     }
@@ -257,7 +260,8 @@ private fun SongBrowseItem(
     song: Song,
     isPlaying: Boolean,
     onPlay: () -> Unit,
-    onAddToQueue: () -> Unit
+    onPlayNext: () -> Unit,
+    onAddToEnd: () -> Unit
 ) {
     Row(
         modifier = Modifier
@@ -339,29 +343,42 @@ private fun SongBrowseItem(
         // Play button
         IconButton(
             onClick = onPlay,
-            modifier = Modifier.size(28.dp)
+            modifier = Modifier.size(26.dp)
         ) {
             Icon(
                 imageVector = Icons.Default.PlayArrow,
                 contentDescription = "Play",
                 tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(18.dp)
+                modifier = Modifier.size(16.dp)
             )
         }
 
-        // Add to queue button
+        // Play Next button
+        IconButton(
+            onClick = onPlayNext,
+            modifier = Modifier.size(26.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.Queue,
+                contentDescription = "Play next",
+                tint = MaterialTheme.colorScheme.secondary,
+                modifier = Modifier.size(14.dp)
+            )
+        }
+
+        // Add to end button
         FilledIconButton(
-            onClick = onAddToQueue,
-            modifier = Modifier.size(28.dp),
+            onClick = onAddToEnd,
+            modifier = Modifier.size(26.dp),
             colors = IconButtonDefaults.filledIconButtonColors(
                 containerColor = MaterialTheme.colorScheme.secondaryContainer
             )
         ) {
             Icon(
                 imageVector = Icons.Default.Add,
-                contentDescription = "Add to queue",
+                contentDescription = "Add to end",
                 tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                modifier = Modifier.size(16.dp)
+                modifier = Modifier.size(14.dp)
             )
         }
     }

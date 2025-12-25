@@ -314,16 +314,58 @@ private fun SpeedControlContent(
     speed: Float,
     onSpeedChange: (Float) -> Unit
 ) {
+    val speedColor = when {
+        speed > 1.0f -> MaterialTheme.colorScheme.tertiary
+        speed < 1.0f -> MaterialTheme.colorScheme.secondary
+        else -> MaterialTheme.colorScheme.primary
+    }
+
     Column {
-        // Slider
-        Slider(
-            value = speed,
-            onValueChange = onSpeedChange,
-            valueRange = 0.25f..4f,
-            steps = 0,
-            modifier = Modifier.fillMaxWidth()
-        )
-        
+        // Slider with min/max labels
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+        ) {
+            Text(
+                text = "0.25x",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Slider(
+                value = speed,
+                onValueChange = onSpeedChange,
+                valueRange = 0.25f..4f,
+                steps = 0,
+                modifier = Modifier.weight(1f)
+            )
+            Text(
+                text = "4x",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        // CURRENT VALUE - Always visible, centered, prominent
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    speedColor.copy(alpha = 0.15f),
+                    RoundedCornerShape(8.dp)
+                )
+                .padding(vertical = 8.dp),
+            contentAlignment = androidx.compose.ui.Alignment.Center
+        ) {
+            Text(
+                text = String.format("%.2fx", speed),
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                color = speedColor
+            )
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
         // Quick buttons
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -376,16 +418,59 @@ private fun PitchControlContent(
     pitch: Float,
     onPitchChange: (Float) -> Unit
 ) {
+    val pitchColor = when {
+        pitch > 0f -> MaterialTheme.colorScheme.tertiary
+        pitch < 0f -> MaterialTheme.colorScheme.secondary
+        else -> MaterialTheme.colorScheme.primary
+    }
+
     Column {
-        // Slider
-        Slider(
-            value = pitch,
-            onValueChange = onPitchChange,
-            valueRange = -36f..36f,
-            steps = 0,
-            modifier = Modifier.fillMaxWidth()
-        )
-        
+        // Slider with min/max labels
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+        ) {
+            Text(
+                text = "-36",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Slider(
+                value = pitch,
+                onValueChange = onPitchChange,
+                valueRange = -36f..36f,
+                steps = 0,
+                modifier = Modifier.weight(1f)
+            )
+            Text(
+                text = "+36",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        // CURRENT VALUE - Always visible, centered, prominent
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    pitchColor.copy(alpha = 0.15f),
+                    RoundedCornerShape(8.dp)
+                )
+                .padding(vertical = 8.dp),
+            contentAlignment = androidx.compose.ui.Alignment.Center
+        ) {
+            val sign = if (pitch > 0) "+" else ""
+            Text(
+                text = "${sign}${String.format("%.1f", pitch)} semitones",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                color = pitchColor
+            )
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
         // Quick buttons
         Row(
             modifier = Modifier.fillMaxWidth(),

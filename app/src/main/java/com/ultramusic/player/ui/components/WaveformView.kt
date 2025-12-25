@@ -221,18 +221,20 @@ fun WaveformView(
 /**
  * Extract waveform data from audio file
  * Returns normalized float array of amplitudes
+ *
+ * MEMORY OPTIMIZED: Samples on-the-fly to avoid OOM
  */
 private fun extractWaveform(context: Context, path: String): FloatArray? {
     val extractor = MediaExtractor()
     var decoder: MediaCodec? = null
-    
+
     try {
         extractor.setDataSource(path)
-        
+
         // Find audio track
         var audioTrackIndex = -1
         var format: MediaFormat? = null
-        
+
         for (i in 0 until extractor.trackCount) {
             val trackFormat = extractor.getTrackFormat(i)
             val mime = trackFormat.getString(MediaFormat.KEY_MIME) ?: continue
@@ -242,35 +244,48 @@ private fun extractWaveform(context: Context, path: String): FloatArray? {
                 break
             }
         }
-        
+
         if (audioTrackIndex < 0 || format == null) {
             return null
         }
-        
+
         extractor.selectTrack(audioTrackIndex)
-        
+
         val sampleRate = format.getInteger(MediaFormat.KEY_SAMPLE_RATE)
         val channels = format.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
         val mime = format.getString(MediaFormat.KEY_MIME) ?: return null
-        
+
+        // Get duration to calculate sampling interval
+        val durationUs = format.getLong(MediaFormat.KEY_DURATION)
+        val durationSec = durationUs / 1_000_000.0
+
         // Create decoder
         decoder = MediaCodec.createDecoderByType(mime)
         decoder.configure(format, null, null, 0)
         decoder.start()
-        
-        val samples = mutableListOf<Float>()
+
+        // MEMORY OPTIMIZED: Fixed-size result array, sample on-the-fly
+        val targetSamples = 2000  // Reduced from 4000 for less memory
+        val result = FloatArray(targetSamples)
+        val sampleCounts = IntArray(targetSamples)  // Count samples per bucket
+
+        // Calculate samples per bucket (total expected samples / target buckets)
+        val totalExpectedSamples = (sampleRate * channels * durationSec).toLong()
+        val samplesPerBucket = max(1L, totalExpectedSamples / targetSamples)
+
         val bufferInfo = MediaCodec.BufferInfo()
         var inputDone = false
         var outputDone = false
-        
-        // Limit to reasonable size for waveform (downsample to ~4000 points)
-        val targetSamples = 4000
-        val maxRawSamples = sampleRate * channels * 300 // Max 5 min
-        
-        while (!outputDone && samples.size < maxRawSamples) {
+        var sampleIndex = 0L
+
+        // Limit processing time (max 10 seconds of processing)
+        val startTime = System.currentTimeMillis()
+        val maxProcessingTime = 10_000L
+
+        while (!outputDone && (System.currentTimeMillis() - startTime) < maxProcessingTime) {
             // Feed input
             if (!inputDone) {
-                val inputIndex = decoder.dequeueInputBuffer(10000)
+                val inputIndex = decoder.dequeueInputBuffer(5000)
                 if (inputIndex >= 0) {
                     val inputBuffer = decoder.getInputBuffer(inputIndex)
                     if (inputBuffer != null) {
@@ -285,43 +300,39 @@ private fun extractWaveform(context: Context, path: String): FloatArray? {
                     }
                 }
             }
-            
-            // Get output
-            val outputIndex = decoder.dequeueOutputBuffer(bufferInfo, 10000)
+
+            // Get output and sample directly into result array
+            val outputIndex = decoder.dequeueOutputBuffer(bufferInfo, 5000)
             if (outputIndex >= 0) {
                 val outputBuffer = decoder.getOutputBuffer(outputIndex)
                 if (outputBuffer != null && bufferInfo.size > 0) {
                     outputBuffer.order(ByteOrder.LITTLE_ENDIAN)
                     val shortBuffer = outputBuffer.asShortBuffer()
-                    while (shortBuffer.hasRemaining() && samples.size < maxRawSamples) {
-                        samples.add(shortBuffer.get() / 32768f)
+
+                    while (shortBuffer.hasRemaining()) {
+                        val sample = abs(shortBuffer.get() / 32768f)
+                        val bucketIndex = ((sampleIndex / samplesPerBucket) % targetSamples).toInt()
+
+                        // Keep max amplitude in bucket
+                        if (sample > result[bucketIndex]) {
+                            result[bucketIndex] = sample
+                        }
+                        sampleCounts[bucketIndex]++
+                        sampleIndex++
                     }
                 }
                 decoder.releaseOutputBuffer(outputIndex, false)
-                
+
                 if (bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) {
                     outputDone = true
                 }
             }
         }
-        
-        if (samples.isEmpty()) return null
-        
-        // Downsample to target size
-        val result = FloatArray(targetSamples)
-        val samplesPerBucket = samples.size / targetSamples
-        
-        for (i in 0 until targetSamples) {
-            val start = i * samplesPerBucket
-            val end = min((i + 1) * samplesPerBucket, samples.size)
-            
-            var maxAmp = 0f
-            for (j in start until end) {
-                maxAmp = max(maxAmp, abs(samples[j]))
-            }
-            result[i] = maxAmp
-        }
-        
+
+        // Check if we got any data
+        val validBuckets = sampleCounts.count { it > 0 }
+        if (validBuckets < 10) return null
+
         // Normalize
         val maxValue = result.maxOrNull() ?: 1f
         if (maxValue > 0) {
@@ -329,9 +340,9 @@ private fun extractWaveform(context: Context, path: String): FloatArray? {
                 result[i] = result[i] / maxValue
             }
         }
-        
+
         return result
-        
+
     } catch (e: Exception) {
         Log.e("WaveformView", "Failed to extract waveform", e)
         return null

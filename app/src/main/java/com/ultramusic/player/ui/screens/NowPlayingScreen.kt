@@ -15,12 +15,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.QueueMusic
 import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.RepeatOne
 import androidx.compose.material.icons.filled.Shuffle
@@ -33,8 +31,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -42,9 +38,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -56,20 +49,22 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import com.ultramusic.player.audio.BeatMarker
 import com.ultramusic.player.data.AudioPreset
+import com.ultramusic.player.data.Song
 import com.ultramusic.player.ui.MainViewModel
 import com.ultramusic.player.ui.components.CompactFolderPanel
-import com.ultramusic.player.ui.components.QueuePanel
+import com.ultramusic.player.ui.components.SmartPlaylistPanel
 import com.ultramusic.player.ui.components.UnifiedControlsPanel
 import com.ultramusic.player.ui.components.WaveformVisualizer
 import com.ultramusic.player.ui.theme.UltraGradientEnd
 import com.ultramusic.player.ui.theme.UltraGradientStart
 
 /**
- * Split-screen Now Playing Screen with:
- * - Left Panel: Now Playing (compact album art, song info, waveform, controls)
- * - Right Panel: Tabbed Queue + Folders browser
- * - Bottom: Unified controls (Speed, Pitch, A-B Loop, Presets) - always visible, scrollable
+ * NowPlayingScreen with NEW layout:
+ * - TOP: Queue (left) + Folders (right) - BOTH visible side by side
+ * - MIDDLE: Compact Now Playing (album art, song info, waveform, controls)
+ * - BOTTOM: All Controls (Speed, Pitch, A-B Loop, Presets) - scrollable
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -80,6 +75,11 @@ fun NowPlayingScreen(
     val uiState by viewModel.uiState.collectAsState()
     val playbackState by viewModel.playbackState.collectAsState()
     val queue by viewModel.queue.collectAsState()
+
+    // Smart Playlist state
+    val activePlaylist by viewModel.activePlaylist.collectAsState()
+    val playlistSearchState by viewModel.playlistSearchState.collectAsState()
+    val isPlaylistSearchMode by viewModel.isPlaylistAddingMode.collectAsState()
 
     // Waveform and beat detection state
     val waveformData by viewModel.currentWaveform.collectAsState()
@@ -145,241 +145,33 @@ fun NowPlayingScreen(
                     .fillMaxSize()
                     .padding(paddingValues)
             ) {
-                // Main content area - Split Screen
+                // ==================== TOP SECTION: SMART PLAYLIST + FOLDERS SIDE BY SIDE ====================
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .weight(1f)
+                        .weight(0.45f) // 45% of screen for Playlist+Folders
                 ) {
-                    // ==================== LEFT PANEL: NOW PLAYING ====================
-                    Column(
+                    // Smart Playlist Panel (left side)
+                    SmartPlaylistPanel(
+                        playlist = activePlaylist,
+                        searchState = playlistSearchState,
+                        isSearchMode = isPlaylistSearchMode,
+                        onPlaySong = { index -> viewModel.playFromPlaylistIndex(index) },
+                        onRemoveSong = { index -> viewModel.removeFromPlaylist(index) },
+                        onMoveSong = { from, to -> viewModel.moveInPlaylist(from, to) },
+                        onSearchQueryChange = { viewModel.updatePlaylistSearchQuery(it) },
+                        onAddFromSearch = { addedSong, playNext ->
+                            viewModel.addToPlaylistFromSearch(addedSong, playNext)
+                        },
+                        onToggleSearchMode = { viewModel.togglePlaylistAddingMode() },
+                        onToggleLoop = { viewModel.togglePlaylistLoop() },
+                        onShuffleRemaining = { viewModel.shufflePlaylistRemaining() },
                         modifier = Modifier
                             .weight(0.5f)
                             .fillMaxHeight()
-                            .padding(horizontal = 12.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Spacer(modifier = Modifier.height(8.dp))
+                    )
 
-                        // Compact Album Art
-                        Box(
-                            modifier = Modifier
-                                .size(140.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(MaterialTheme.colorScheme.surfaceVariant),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            if (song.albumArtUri != null) {
-                                AsyncImage(
-                                    model = song.albumArtUri,
-                                    contentDescription = "Album art",
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentScale = ContentScale.Crop
-                                )
-                            } else {
-                                Icon(
-                                    imageVector = Icons.Default.MusicNote,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(60.dp),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        // Song Info
-                        Text(
-                            text = song.title,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                            textAlign = TextAlign.Center
-                        )
-
-                        Spacer(modifier = Modifier.height(4.dp))
-
-                        Text(
-                            text = "${song.artist} • ${song.album}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-
-                        // Speed/Pitch indicator
-                        if (playbackState.speed != 1.0f || playbackState.pitch != 0f) {
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Row(
-                                horizontalArrangement = Arrangement.Center,
-                                modifier = Modifier
-                                    .background(
-                                        MaterialTheme.colorScheme.primaryContainer,
-                                        RoundedCornerShape(12.dp)
-                                    )
-                                    .padding(horizontal = 10.dp, vertical = 4.dp)
-                            ) {
-                                if (playbackState.speed != 1.0f) {
-                                    Text(
-                                        text = "${String.format("%.2f", playbackState.speed)}x",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onPrimaryContainer
-                                    )
-                                }
-                                if (playbackState.speed != 1.0f && playbackState.pitch != 0f) {
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                }
-                                if (playbackState.pitch != 0f) {
-                                    val sign = if (playbackState.pitch > 0) "+" else ""
-                                    Text(
-                                        text = "${sign}${String.format("%.1f", playbackState.pitch)} st",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onPrimaryContainer
-                                    )
-                                }
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        // Waveform Visualizer
-                        if (waveformData.isNotEmpty()) {
-                            WaveformVisualizer(
-                                waveformData = waveformData,
-                                currentPosition = playbackState.progress,
-                                durationMs = playbackState.duration,
-                                loopStartMs = playbackState.abLoopStart,
-                                loopEndMs = playbackState.abLoopEnd,
-                                isLooping = playbackState.isLooping,
-                                onSeek = { viewModel.seekToPercent(it) },
-                                onLoopStartChange = { viewModel.setWaveformLoopStart(it) },
-                                onLoopEndChange = { viewModel.setWaveformLoopEnd(it) },
-                                onClearLoop = { viewModel.clearWaveformLoop() },
-                                beatMarkers = beatMarkers,
-                                estimatedBpm = estimatedBpm,
-                                showBeatMarkers = true,
-                                modifier = Modifier.fillMaxWidth(),
-                                height = 80.dp
-                            )
-                        } else {
-                            // Progress info while loading
-                            Column(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                if (isExtractingWaveform) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        androidx.compose.material3.CircularProgressIndicator(
-                                            modifier = Modifier.size(14.dp),
-                                            strokeWidth = 2.dp
-                                        )
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text(
-                                            text = "Analyzing...",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                }
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = "${playbackState.positionFormatted} / ${playbackState.durationFormatted}",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        // Main Playback Controls (compact)
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceEvenly,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            // Shuffle
-                            IconButton(
-                                onClick = { viewModel.toggleShuffle() },
-                                modifier = Modifier.size(36.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Shuffle,
-                                    contentDescription = "Shuffle",
-                                    modifier = Modifier.size(18.dp),
-                                    tint = if (playbackState.isShuffling)
-                                        MaterialTheme.colorScheme.primary
-                                    else
-                                        MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-
-                            // Previous
-                            IconButton(
-                                onClick = { viewModel.playPrevious() },
-                                modifier = Modifier.size(40.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.SkipPrevious,
-                                    contentDescription = "Previous",
-                                    modifier = Modifier.size(28.dp)
-                                )
-                            }
-
-                            // Play/Pause
-                            FilledIconButton(
-                                onClick = { viewModel.togglePlayPause() },
-                                modifier = Modifier.size(56.dp),
-                                colors = IconButtonDefaults.filledIconButtonColors(
-                                    containerColor = MaterialTheme.colorScheme.primary
-                                )
-                            ) {
-                                Icon(
-                                    imageVector = if (playbackState.isPlaying)
-                                        Icons.Default.Pause else Icons.Default.PlayArrow,
-                                    contentDescription = if (playbackState.isPlaying) "Pause" else "Play",
-                                    modifier = Modifier.size(32.dp),
-                                    tint = MaterialTheme.colorScheme.onPrimary
-                                )
-                            }
-
-                            // Next
-                            IconButton(
-                                onClick = { viewModel.playNext() },
-                                modifier = Modifier.size(40.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.SkipNext,
-                                    contentDescription = "Next",
-                                    modifier = Modifier.size(28.dp)
-                                )
-                            }
-
-                            // Repeat
-                            IconButton(
-                                onClick = { viewModel.toggleLoop() },
-                                modifier = Modifier.size(36.dp)
-                            ) {
-                                Icon(
-                                    imageVector = if (playbackState.isLooping)
-                                        Icons.Default.RepeatOne else Icons.Default.Repeat,
-                                    contentDescription = "Repeat",
-                                    modifier = Modifier.size(18.dp),
-                                    tint = if (playbackState.isLooping)
-                                        MaterialTheme.colorScheme.primary
-                                    else
-                                        MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.weight(1f))
-                    }
-
-                    // Divider between panels
+                    // Vertical divider
                     Box(
                         modifier = Modifier
                             .width(1.dp)
@@ -387,26 +179,64 @@ fun NowPlayingScreen(
                             .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
                     )
 
-                    // ==================== RIGHT PANEL: QUEUE + FOLDERS ====================
-                    RightPanel(
-                        queue = queue,
-                        currentSongId = song.id,
-                        currentFolderPath = currentFolderPath,
+                    // Folders Panel (right side)
+                    CompactFolderPanel(
+                        currentPath = currentFolderPath,
                         breadcrumbs = breadcrumbs,
                         browseItems = browseItems,
-                        onPlayFromQueue = { index -> viewModel.playFromPlaylistIndex(index) },
-                        onRemoveFromQueue = { index -> viewModel.removeFromPlaylist(index) },
+                        currentSongId = song.id,
                         onNavigateToPath = { path -> viewModel.navigateToPath(path) },
                         onNavigateUp = { viewModel.navigateUp() },
-                        onPlaySong = { song -> viewModel.playSongFromFolder(song) },
-                        onAddToQueue = { song -> viewModel.addToPlaylistEnd(song) },
+                        onPlaySong = { s -> viewModel.playSongFromFolder(s) },
+                        onPlayNext = { s -> viewModel.addToPlayNext(s) },
+                        onAddToEnd = { s -> viewModel.addToPlaylistEnd(s) },
                         modifier = Modifier
                             .weight(0.5f)
                             .fillMaxHeight()
                     )
                 }
 
-                // ==================== BOTTOM: UNIFIED CONTROLS ====================
+                // Horizontal divider
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(1.dp)
+                        .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
+                )
+
+                // ==================== MIDDLE SECTION: COMPACT NOW PLAYING ====================
+                CompactNowPlayingSection(
+                    song = song,
+                    isPlaying = playbackState.isPlaying,
+                    isShuffling = playbackState.isShuffling,
+                    isLooping = playbackState.isLooping,
+                    speed = playbackState.speed,
+                    pitch = playbackState.pitch,
+                    progress = playbackState.progress,
+                    duration = playbackState.duration,
+                    positionFormatted = playbackState.positionFormatted,
+                    durationFormatted = playbackState.durationFormatted,
+                    waveformData = waveformData,
+                    beatMarkers = beatMarkers,
+                    estimatedBpm = estimatedBpm,
+                    isExtractingWaveform = isExtractingWaveform,
+                    abLoopStart = playbackState.abLoopStart,
+                    abLoopEnd = playbackState.abLoopEnd,
+                    onTogglePlayPause = { viewModel.togglePlayPause() },
+                    onPrevious = { viewModel.playPrevious() },
+                    onNext = { viewModel.playNext() },
+                    onToggleShuffle = { viewModel.toggleShuffle() },
+                    onToggleLoop = { viewModel.toggleLoop() },
+                    onSeekToPercent = { viewModel.seekToPercent(it) },
+                    onLoopStartChange = { viewModel.setWaveformLoopStart(it) },
+                    onLoopEndChange = { viewModel.setWaveformLoopEnd(it) },
+                    onClearLoop = { viewModel.clearWaveformLoop() },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(0.25f) // 25% of screen for Now Playing
+                )
+
+                // ==================== BOTTOM SECTION: UNIFIED CONTROLS ====================
                 UnifiedControlsPanel(
                     // Speed & Pitch
                     speed = playbackState.speed,
@@ -434,7 +264,8 @@ fun NowPlayingScreen(
                     // Presets
                     presets = AudioPreset.PRESETS,
                     selectedPreset = uiState.selectedPreset,
-                    onPresetSelected = { viewModel.applyPreset(it) }
+                    onPresetSelected = { viewModel.applyPreset(it) },
+                    modifier = Modifier.weight(0.30f) // 30% of screen for Controls
                 )
             }
         }
@@ -442,71 +273,256 @@ fun NowPlayingScreen(
 }
 
 /**
- * Right panel with tabbed Queue and Folders browser
+ * Compact Now Playing section with horizontal layout
  */
 @Composable
-private fun RightPanel(
-    queue: List<com.ultramusic.player.data.Song>,
-    currentSongId: Long,
-    currentFolderPath: String,
-    breadcrumbs: List<Pair<String, String>>,
-    browseItems: List<com.ultramusic.player.data.BrowseItem>,
-    onPlayFromQueue: (Int) -> Unit,
-    onRemoveFromQueue: (Int) -> Unit,
-    onNavigateToPath: (String) -> Unit,
-    onNavigateUp: () -> Unit,
-    onPlaySong: (com.ultramusic.player.data.Song) -> Unit,
-    onAddToQueue: (com.ultramusic.player.data.Song) -> Unit,
+private fun CompactNowPlayingSection(
+    song: Song,
+    isPlaying: Boolean,
+    isShuffling: Boolean,
+    isLooping: Boolean,
+    speed: Float,
+    pitch: Float,
+    progress: Float,
+    duration: Long,
+    positionFormatted: String,
+    durationFormatted: String,
+    waveformData: List<Float>,
+    beatMarkers: List<BeatMarker>,
+    estimatedBpm: Float?,
+    isExtractingWaveform: Boolean,
+    abLoopStart: Long?,
+    abLoopEnd: Long?,
+    onTogglePlayPause: () -> Unit,
+    onPrevious: () -> Unit,
+    onNext: () -> Unit,
+    onToggleShuffle: () -> Unit,
+    onToggleLoop: () -> Unit,
+    onSeekToPercent: (Float) -> Unit,
+    onLoopStartChange: (Long) -> Unit,
+    onLoopEndChange: (Long) -> Unit,
+    onClearLoop: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var selectedTab by remember { mutableIntStateOf(0) }
-    val tabs = listOf("Queue", "Folders")
-
-    Column(modifier = modifier) {
-        // Tab row
-        TabRow(
-            selectedTabIndex = selectedTab,
-            containerColor = Color.Transparent
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 8.dp)
+    ) {
+        // Top row: Album art + Song info + Controls
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            tabs.forEachIndexed { index, title ->
-                Tab(
-                    selected = selectedTab == index,
-                    onClick = { selectedTab = index },
-                    text = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = if (index == 0) Icons.Default.QueueMusic else Icons.Default.Folder,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp)
+            // Album art (small)
+            Box(
+                modifier = Modifier
+                    .size(64.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                contentAlignment = Alignment.Center
+            ) {
+                if (song.albumArtUri != null) {
+                    AsyncImage(
+                        model = song.albumArtUri,
+                        contentDescription = "Album art",
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                } else {
+                    Icon(
+                        imageVector = Icons.Default.MusicNote,
+                        contentDescription = null,
+                        modifier = Modifier.size(28.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            // Song info
+            Column(
+                modifier = Modifier.weight(1f)
+            ) {
+                Text(
+                    text = song.title,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = "${song.artist} - ${song.album}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+
+                // Speed/Pitch indicator
+                if (speed != 1.0f || pitch != 0f) {
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Row(
+                        modifier = Modifier
+                            .background(
+                                MaterialTheme.colorScheme.primaryContainer,
+                                RoundedCornerShape(8.dp)
                             )
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    ) {
+                        if (speed != 1.0f) {
+                            Text(
+                                text = "${String.format("%.2f", speed)}x",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        }
+                        if (speed != 1.0f && pitch != 0f) {
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text(title, style = MaterialTheme.typography.labelMedium)
+                        }
+                        if (pitch != 0f) {
+                            val sign = if (pitch > 0) "+" else ""
+                            Text(
+                                text = "${sign}${String.format("%.1f", pitch)}st",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
                         }
                     }
-                )
+                }
+            }
+
+            // Playback controls (compact)
+            Row(
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Shuffle
+                IconButton(
+                    onClick = onToggleShuffle,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Shuffle,
+                        contentDescription = "Shuffle",
+                        modifier = Modifier.size(16.dp),
+                        tint = if (isShuffling)
+                            MaterialTheme.colorScheme.primary
+                        else
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                // Previous
+                IconButton(
+                    onClick = onPrevious,
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.SkipPrevious,
+                        contentDescription = "Previous",
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+
+                // Play/Pause
+                FilledIconButton(
+                    onClick = onTogglePlayPause,
+                    modifier = Modifier.size(48.dp),
+                    colors = IconButtonDefaults.filledIconButtonColors(
+                        containerColor = MaterialTheme.colorScheme.primary
+                    )
+                ) {
+                    Icon(
+                        imageVector = if (isPlaying)
+                            Icons.Default.Pause else Icons.Default.PlayArrow,
+                        contentDescription = if (isPlaying) "Pause" else "Play",
+                        modifier = Modifier.size(28.dp),
+                        tint = MaterialTheme.colorScheme.onPrimary
+                    )
+                }
+
+                // Next
+                IconButton(
+                    onClick = onNext,
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.SkipNext,
+                        contentDescription = "Next",
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+
+                // Repeat
+                IconButton(
+                    onClick = onToggleLoop,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        imageVector = if (isLooping)
+                            Icons.Default.RepeatOne else Icons.Default.Repeat,
+                        contentDescription = "Repeat",
+                        modifier = Modifier.size(16.dp),
+                        tint = if (isLooping)
+                            MaterialTheme.colorScheme.primary
+                        else
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
         }
 
-        // Tab content
-        when (selectedTab) {
-            0 -> QueuePanel(
-                queue = queue,
-                currentSongId = currentSongId,
-                onPlaySong = onPlayFromQueue,
-                onRemoveSong = onRemoveFromQueue,
-                modifier = Modifier.fillMaxSize()
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Waveform or progress bar
+        if (waveformData.isNotEmpty()) {
+            WaveformVisualizer(
+                waveformData = waveformData,
+                currentPosition = progress,
+                durationMs = duration,
+                loopStartMs = abLoopStart,
+                loopEndMs = abLoopEnd,
+                isLooping = isLooping,
+                onSeek = onSeekToPercent,
+                onLoopStartChange = onLoopStartChange,
+                onLoopEndChange = onLoopEndChange,
+                onClearLoop = onClearLoop,
+                beatMarkers = beatMarkers,
+                estimatedBpm = estimatedBpm ?: 0f,
+                showBeatMarkers = true,
+                modifier = Modifier.fillMaxWidth(),
+                height = 50.dp
             )
-            1 -> CompactFolderPanel(
-                currentPath = currentFolderPath,
-                breadcrumbs = breadcrumbs,
-                browseItems = browseItems,
-                currentSongId = currentSongId,
-                onNavigateToPath = onNavigateToPath,
-                onNavigateUp = onNavigateUp,
-                onPlaySong = onPlaySong,
-                onAddToQueue = onAddToQueue,
-                modifier = Modifier.fillMaxSize()
-            )
+        } else {
+            // Progress info while loading
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                if (isExtractingWaveform) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        androidx.compose.material3.CircularProgressIndicator(
+                            modifier = Modifier.size(12.dp),
+                            strokeWidth = 2.dp
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Analyzing...",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "$positionFormatted / $durationFormatted",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
     }
 }

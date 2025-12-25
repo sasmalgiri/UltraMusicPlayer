@@ -4,6 +4,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculateZoom
@@ -25,9 +26,17 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.BookmarkAdd
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Repeat
+import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.ZoomIn
 import androidx.compose.material.icons.filled.ZoomOut
@@ -35,6 +44,7 @@ import androidx.compose.material3.Badge
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -60,6 +70,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
@@ -73,10 +84,22 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ultramusic.player.audio.BeatMarker
 import com.ultramusic.player.audio.BeatStrength
+import java.util.UUID
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
+
+/**
+ * Saved A-B marker for quick recall (like Music Speed Changer)
+ */
+data class SavedMarker(
+    val id: String = UUID.randomUUID().toString(),
+    val name: String,
+    val startMs: Long,
+    val endMs: Long,
+    val songId: Long  // Associate with specific song
+)
 
 /**
  * Zoomable Waveform Visualizer with A-B Loop Markers and Beat Detection
@@ -112,9 +135,15 @@ fun WaveformVisualizer(
     loopColor: Color = Color(0xFFFF9800),
     beatColor: Color = Color(0xFFE91E63),
     backgroundColor: Color = MaterialTheme.colorScheme.surfaceVariant,
-    height: Dp = 140.dp
+    height: Dp = 200.dp,  // Balanced height for visibility and screen space
+    // Saved markers functionality
+    savedMarkers: List<SavedMarker> = emptyList(),
+    onSaveMarker: ((String, Long, Long) -> Unit)? = null,  // name, startMs, endMs
+    onLoadMarker: ((SavedMarker) -> Unit)? = null,
+    onDeleteMarker: ((SavedMarker) -> Unit)? = null
 ) {
     val density = LocalDensity.current
+    val textMeasurer = rememberTextMeasurer()
     var canvasWidth by remember { mutableFloatStateOf(0f) }
 
     // Zoom and pan state
@@ -135,8 +164,13 @@ fun WaveformVisualizer(
     // Marker drag states
     var isDraggingA by remember { mutableStateOf(false) }
     var isDraggingB by remember { mutableStateOf(false) }
+    var isDraggingPlayhead by remember { mutableStateOf(false) }  // For scrubbing
     var dragPositionA by remember { mutableFloatStateOf(loopStartPosition) }
     var dragPositionB by remember { mutableFloatStateOf(loopEndPosition) }
+
+    // Track which marker to set next (for long-press to set markers)
+    // false = set A next, true = set B next
+    var setMarkerB by remember { mutableStateOf(false) }
 
     LaunchedEffect(loopStartMs, loopEndMs) {
         dragPositionA = loopStartMs?.let { it.toFloat() / durationMs } ?: 0f
@@ -208,44 +242,96 @@ fun WaveformVisualizer(
                             }
                         }
                         .pointerInput(Unit) {
-                            detectTapGestures { offset ->
-                                val visibleRange = 1f / zoomLevel
-                                val tappedPosition = panOffset + (offset.x / size.width) * visibleRange
-                                onSeek(tappedPosition.coerceIn(0f, 1f))
-                            }
+                            detectTapGestures(
+                                onTap = { offset ->
+                                    val visibleRange = 1f / zoomLevel
+                                    val tappedPosition = panOffset + (offset.x / size.width) * visibleRange
+                                    onSeek(tappedPosition.coerceIn(0f, 1f))
+                                },
+                                onLongPress = { offset ->
+                                    // Long press sets A or B marker at that position
+                                    val visibleRange = 1f / zoomLevel
+                                    val tappedPosition = panOffset + (offset.x / size.width) * visibleRange
+                                    val positionMs = (tappedPosition.coerceIn(0f, 1f) * durationMs).toLong()
+
+                                    if (!setMarkerB || loopStartMs == null) {
+                                        // Set A marker
+                                        onLoopStartChange(positionMs)
+                                        setMarkerB = true
+                                    } else {
+                                        // Set B marker (must be after A)
+                                        if (positionMs > (loopStartMs ?: 0)) {
+                                            onLoopEndChange(positionMs)
+                                        } else {
+                                            // If B is before A, swap them
+                                            val currentA = loopStartMs ?: 0
+                                            onLoopStartChange(positionMs)
+                                            onLoopEndChange(currentA)
+                                        }
+                                        setMarkerB = false
+                                    }
+                                }
+                            )
                         }
-                        .pointerInput(Unit) {
+                        .pointerInput(loopStartMs, loopEndMs) {
+                            // Enable dragging for markers and playhead scrubbing
                             detectDragGestures(
                                 onDragStart = { offset ->
                                     val visibleRange = 1f / animatedZoom
-                                    val position = panOffset + (offset.x / size.width) * visibleRange
 
                                     // Calculate marker positions in current view
-                                    val markerAViewX = (dragPositionA - panOffset) / visibleRange * size.width
-                                    val markerBViewX = (dragPositionB - panOffset) / visibleRange * size.width
+                                    val markerAViewX = if (loopStartMs != null) {
+                                        (dragPositionA - panOffset) / visibleRange * size.width
+                                    } else -1000f
+                                    val markerBViewX = if (loopEndMs != null) {
+                                        (dragPositionB - panOffset) / visibleRange * size.width
+                                    } else -1000f
 
-                                    // Check if near A or B marker (within 40px for easier touch)
-                                    if (abs(offset.x - markerAViewX) < 40) {
-                                        isDraggingA = true
-                                    } else if (abs(offset.x - markerBViewX) < 40) {
-                                        isDraggingB = true
+                                    // Larger touch target (60px) for easier marker selection
+                                    val distanceToA = abs(offset.x - markerAViewX)
+                                    val distanceToB = abs(offset.x - markerBViewX)
+
+                                    // Choose the closest marker if within threshold, otherwise scrub playhead
+                                    when {
+                                        distanceToA < 60 && distanceToA <= distanceToB -> {
+                                            isDraggingA = true
+                                        }
+                                        distanceToB < 60 && distanceToB < distanceToA -> {
+                                            isDraggingB = true
+                                        }
+                                        else -> {
+                                            // Not near any marker - drag to scrub playhead
+                                            isDraggingPlayhead = true
+                                            val position = panOffset + (offset.x / size.width) * visibleRange
+                                            onSeek(position.coerceIn(0f, 1f))
+                                        }
                                     }
                                 },
                                 onDrag = { change, _ ->
                                     val visibleRange = 1f / animatedZoom
                                     val position = panOffset + (change.position.x / size.width) * visibleRange
 
-                                    if (isDraggingA) {
-                                        dragPositionA = position.coerceIn(0f, dragPositionB - 0.01f)
-                                        onLoopStartChange((dragPositionA * durationMs).toLong())
-                                    } else if (isDraggingB) {
-                                        dragPositionB = position.coerceIn(dragPositionA + 0.01f, 1f)
-                                        onLoopEndChange((dragPositionB * durationMs).toLong())
+                                    when {
+                                        isDraggingA -> {
+                                            val maxA = if (loopEndMs != null) dragPositionB - 0.01f else 1f
+                                            dragPositionA = position.coerceIn(0f, maxA)
+                                            onLoopStartChange((dragPositionA * durationMs).toLong())
+                                        }
+                                        isDraggingB -> {
+                                            val minB = if (loopStartMs != null) dragPositionA + 0.01f else 0f
+                                            dragPositionB = position.coerceIn(minB, 1f)
+                                            onLoopEndChange((dragPositionB * durationMs).toLong())
+                                        }
+                                        isDraggingPlayhead -> {
+                                            // Scrub through the song
+                                            onSeek(position.coerceIn(0f, 1f))
+                                        }
                                     }
                                 },
                                 onDragEnd = {
                                     isDraggingA = false
                                     isDraggingB = false
+                                    isDraggingPlayhead = false
                                 }
                             )
                         }
@@ -367,7 +453,7 @@ fun WaveformVisualizer(
                         }
                     }
 
-                    // Draw playhead
+                    // Draw playhead with floating timestamp
                     if (currentPosition >= startPos && currentPosition <= endPos) {
                         val playheadX = ((currentPosition - startPos) / visibleRange * size.width)
 
@@ -393,7 +479,52 @@ fun WaveformVisualizer(
                             strokeWidth = 2.dp.toPx()
                         )
 
-                        // Playhead triangle
+                        // Floating timestamp label - positioned at bottom of playhead
+                        val currentTimeMs = (currentPosition * durationMs).toLong()
+                        val timeText = formatTime(currentTimeMs)
+                        val labelWidth = 44.dp.toPx()
+                        val labelHeight = 18.dp.toPx()
+                        val labelY = canvasHeight - labelHeight - 4.dp.toPx()
+
+                        // Calculate x position, keeping label within bounds
+                        val labelX = (playheadX - labelWidth / 2)
+                            .coerceIn(2.dp.toPx(), size.width - labelWidth - 2.dp.toPx())
+
+                        // Draw label background
+                        drawRoundRect(
+                            color = Color.Black.copy(alpha = 0.85f),
+                            topLeft = Offset(labelX, labelY),
+                            size = Size(labelWidth, labelHeight),
+                            cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx())
+                        )
+
+                        // Draw label border
+                        drawRoundRect(
+                            color = playedColor.copy(alpha = 0.8f),
+                            topLeft = Offset(labelX, labelY),
+                            size = Size(labelWidth, labelHeight),
+                            cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx()),
+                            style = Stroke(width = 1.dp.toPx())
+                        )
+
+                        // Draw timestamp text
+                        val textLayoutResult = textMeasurer.measure(
+                            text = timeText,
+                            style = TextStyle(
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                        )
+                        drawText(
+                            textLayoutResult = textLayoutResult,
+                            topLeft = Offset(
+                                labelX + (labelWidth - textLayoutResult.size.width) / 2,
+                                labelY + (labelHeight - textLayoutResult.size.height) / 2
+                            )
+                        )
+
+                        // Playhead triangle at top
                         val trianglePath = Path().apply {
                             moveTo(playheadX - 6.dp.toPx(), 0f)
                             lineTo(playheadX + 6.dp.toPx(), 0f)
@@ -403,25 +534,25 @@ fun WaveformVisualizer(
                         drawPath(trianglePath, Color.White)
                     }
 
-                    // Draw A marker
+                    // Draw A marker - Bright Cyan for high visibility
                     if (loopStartMs != null && dragPositionA >= startPos && dragPositionA <= endPos) {
                         val markerX = ((dragPositionA - startPos) / visibleRange * size.width)
                         drawLoopMarker(
                             x = markerX,
                             canvasHeight = canvasHeight,
-                            color = Color(0xFF4CAF50),
+                            color = Color(0xFF00E5FF),  // Bright Cyan
                             label = "A",
                             isDragging = isDraggingA
                         )
                     }
 
-                    // Draw B marker
+                    // Draw B marker - Bright Yellow for high visibility
                     if (loopEndMs != null && dragPositionB >= startPos && dragPositionB <= endPos) {
                         val markerX = ((dragPositionB - startPos) / visibleRange * size.width)
                         drawLoopMarker(
                             x = markerX,
                             canvasHeight = canvasHeight,
-                            color = Color(0xFFF44336),
+                            color = Color(0xFFFFEA00),  // Bright Yellow
                             label = "B",
                             isDragging = isDraggingB
                         )
@@ -459,13 +590,17 @@ fun WaveformVisualizer(
                 loopColor = loopColor,
                 onLoopStartChange = onLoopStartChange,
                 onLoopEndChange = onLoopEndChange,
-                onClearLoop = onClearLoop
+                onClearLoop = onClearLoop,
+                savedMarkers = savedMarkers,
+                onSaveMarker = onSaveMarker,
+                onLoadMarker = onLoadMarker,
+                onDeleteMarker = onDeleteMarker
             )
 
             // Instructions
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = "Pinch to zoom | Pan when zoomed | Tap to seek | Drag A/B markers",
+                text = "Tap to seek | Drag markers | HOLD A/B buttons & release to set",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
                 textAlign = TextAlign.Center,
@@ -609,6 +744,14 @@ private fun WaveformHeader(
     }
 }
 
+/**
+ * Music Speed Changer style A-B Loop Controls
+ * Features:
+ * - Hold A/B buttons and release to set marker at that moment
+ * - Skip loop forward/backward by loop duration
+ * - Fine-tune markers with +/- ms adjustment
+ * - Save/load markers
+ */
 @Composable
 private fun LoopControlRow(
     loopStartMs: Long?,
@@ -618,77 +761,549 @@ private fun LoopControlRow(
     loopColor: Color,
     onLoopStartChange: (Long) -> Unit,
     onLoopEndChange: (Long) -> Unit,
-    onClearLoop: () -> Unit
+    onClearLoop: () -> Unit,
+    savedMarkers: List<SavedMarker> = emptyList(),
+    onSaveMarker: ((String, Long, Long) -> Unit)? = null,
+    onLoadMarker: ((SavedMarker) -> Unit)? = null,
+    onDeleteMarker: ((SavedMarker) -> Unit)? = null
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        // Loop time display
-        if (loopStartMs != null && loopEndMs != null) {
-            Column {
-                Text(
-                    text = "Loop: ${formatTime(loopStartMs)} - ${formatTime(loopEndMs)}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = loopColor
-                )
-                Text(
-                    text = "Duration: ${formatTime(loopEndMs - loopStartMs)}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-                )
+    // Hold-to-set state
+    var isHoldingA by remember { mutableStateOf(false) }
+    var isHoldingB by remember { mutableStateOf(false) }
+    var holdStartTimeA by remember { mutableFloatStateOf(0f) }
+    var holdStartTimeB by remember { mutableFloatStateOf(0f) }
+
+    // Markers menu state
+    var showMarkersMenu by remember { mutableStateOf(false) }
+    var showSaveDialog by remember { mutableStateOf(false) }
+    var markerName by remember { mutableStateOf("") }
+
+    // Fine-tune step (in milliseconds)
+    val finetuneStep = 100L  // 100ms steps
+
+    val loopDuration = if (loopStartMs != null && loopEndMs != null) loopEndMs - loopStartMs else 0L
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        // Row 1: Loop info and main A-B buttons
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Loop time display with fine-tune controls
+            if (loopStartMs != null && loopEndMs != null) {
+                Column {
+                    // A marker with fine-tune
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        // Fine-tune A backward
+                        IconButton(
+                            onClick = {
+                                val newA = (loopStartMs - finetuneStep).coerceAtLeast(0)
+                                onLoopStartChange(newA)
+                            },
+                            modifier = Modifier.size(24.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Remove,
+                                contentDescription = "A -100ms",
+                                modifier = Modifier.size(14.dp),
+                                tint = Color(0xFF00E5FF)
+                            )
+                        }
+
+                        Text(
+                            text = "A: ${formatTimeWithMs(loopStartMs)}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color(0xFF00E5FF),
+                            fontWeight = FontWeight.Bold
+                        )
+
+                        // Fine-tune A forward
+                        IconButton(
+                            onClick = {
+                                val newA = (loopStartMs + finetuneStep).coerceAtMost(loopEndMs - 100)
+                                onLoopStartChange(newA)
+                            },
+                            modifier = Modifier.size(24.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Add,
+                                contentDescription = "A +100ms",
+                                modifier = Modifier.size(14.dp),
+                                tint = Color(0xFF00E5FF)
+                            )
+                        }
+                    }
+
+                    // B marker with fine-tune
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        // Fine-tune B backward
+                        IconButton(
+                            onClick = {
+                                val newB = (loopEndMs - finetuneStep).coerceAtLeast(loopStartMs + 100)
+                                onLoopEndChange(newB)
+                            },
+                            modifier = Modifier.size(24.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Remove,
+                                contentDescription = "B -100ms",
+                                modifier = Modifier.size(14.dp),
+                                tint = Color(0xFFFFEA00)
+                            )
+                        }
+
+                        Text(
+                            text = "B: ${formatTimeWithMs(loopEndMs)}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color(0xFFFFEA00),
+                            fontWeight = FontWeight.Bold
+                        )
+
+                        // Fine-tune B forward
+                        IconButton(
+                            onClick = {
+                                val newB = (loopEndMs + finetuneStep).coerceAtMost(durationMs)
+                                onLoopEndChange(newB)
+                            },
+                            modifier = Modifier.size(24.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Add,
+                                contentDescription = "B +100ms",
+                                modifier = Modifier.size(14.dp),
+                                tint = Color(0xFFFFEA00)
+                            )
+                        }
+                    }
+
+                    // Duration
+                    Text(
+                        text = "Loop: ${formatTimeWithMs(loopDuration)}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                        modifier = Modifier.padding(start = 24.dp)
+                    )
+                }
+            } else {
+                Column {
+                    Text(
+                        text = "HOLD & RELEASE to set A-B",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "Or long-press waveform",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
+                        fontSize = 10.sp
+                    )
+                }
             }
-        } else {
-            Text(
-                text = "Set A-B points to create loop",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-            )
+
+            // Main control buttons
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Skip backward (move loop back by its duration)
+                if (loopStartMs != null && loopEndMs != null && loopDuration > 0) {
+                    IconButton(
+                        onClick = {
+                            val newStart = (loopStartMs - loopDuration).coerceAtLeast(0)
+                            val newEnd = (loopEndMs - loopDuration).coerceAtLeast(loopDuration)
+                            onLoopStartChange(newStart)
+                            onLoopEndChange(newEnd)
+                        },
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.SkipPrevious,
+                            contentDescription = "Skip loop backward",
+                            modifier = Modifier.size(18.dp),
+                            tint = loopColor
+                        )
+                    }
+                }
+
+                // Hold-to-set A button - Bright Cyan
+                Box(
+                    modifier = Modifier
+                        .height(36.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(
+                            if (isHoldingA) Color(0xFF00E5FF)
+                            else Color(0xFF00E5FF).copy(alpha = 0.2f)
+                        )
+                        .pointerInput(Unit) {
+                            awaitEachGesture {
+                                // Wait for press
+                                awaitFirstDown(requireUnconsumed = false)
+                                isHoldingA = true
+                                holdStartTimeA = currentPosition
+
+                                // Wait for release
+                                try {
+                                    do {
+                                        val event = awaitPointerEvent()
+                                    } while (event.changes.any { it.pressed })
+                                } finally {
+                                    // Set marker at RELEASE position (current playback position)
+                                    if (isHoldingA) {
+                                        val releaseTimeMs = (currentPosition * durationMs).toLong()
+                                        onLoopStartChange(releaseTimeMs)
+                                    }
+                                    isHoldingA = false
+                                }
+                            }
+                        }
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = if (isHoldingA) "▶ A" else "A",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp,
+                            color = if (isHoldingA) Color.Black else Color(0xFF00E5FF)
+                        )
+                        if (loopStartMs != null) {
+                            Text(
+                                text = " ✓",
+                                fontSize = 10.sp,
+                                color = if (isHoldingA) Color.Black else Color(0xFF00E5FF)
+                            )
+                        }
+                    }
+                }
+
+                // Hold-to-set B button - Bright Yellow
+                Box(
+                    modifier = Modifier
+                        .height(36.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(
+                            if (isHoldingB) Color(0xFFFFEA00)
+                            else Color(0xFFFFEA00).copy(alpha = 0.2f)
+                        )
+                        .pointerInput(Unit) {
+                            awaitEachGesture {
+                                awaitFirstDown(requireUnconsumed = false)
+                                isHoldingB = true
+                                holdStartTimeB = currentPosition
+
+                                try {
+                                    do {
+                                        val event = awaitPointerEvent()
+                                    } while (event.changes.any { it.pressed })
+                                } finally {
+                                    if (isHoldingB) {
+                                        val releaseTimeMs = (currentPosition * durationMs).toLong()
+                                        // Ensure B is after A
+                                        if (loopStartMs == null || releaseTimeMs > loopStartMs) {
+                                            onLoopEndChange(releaseTimeMs)
+                                        } else {
+                                            // Swap: current A becomes B, new position becomes A
+                                            onLoopEndChange(loopStartMs)
+                                            onLoopStartChange(releaseTimeMs)
+                                        }
+                                    }
+                                    isHoldingB = false
+                                }
+                            }
+                        }
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = if (isHoldingB) "▶ B" else "B",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp,
+                            color = if (isHoldingB) Color.Black else Color(0xFFFFEA00)
+                        )
+                        if (loopEndMs != null) {
+                            Text(
+                                text = " ✓",
+                                fontSize = 10.sp,
+                                color = if (isHoldingB) Color.Black else Color(0xFFFFEA00)
+                            )
+                        }
+                    }
+                }
+
+                // Skip forward (move loop ahead by its duration)
+                if (loopStartMs != null && loopEndMs != null && loopDuration > 0) {
+                    IconButton(
+                        onClick = {
+                            val newStart = (loopStartMs + loopDuration).coerceAtMost(durationMs - loopDuration)
+                            val newEnd = (loopEndMs + loopDuration).coerceAtMost(durationMs)
+                            if (newEnd > newStart) {
+                                onLoopStartChange(newStart)
+                                onLoopEndChange(newEnd)
+                            }
+                        },
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.SkipNext,
+                            contentDescription = "Skip loop forward",
+                            modifier = Modifier.size(18.dp),
+                            tint = loopColor
+                        )
+                    }
+                }
+
+                // Clear loop button
+                if (loopStartMs != null || loopEndMs != null) {
+                    IconButton(
+                        onClick = onClearLoop,
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Stop,
+                            contentDescription = "Clear Loop",
+                            modifier = Modifier.size(18.dp),
+                            tint = MaterialTheme.colorScheme.error
+                        )
+                    }
+                }
+
+                // Saved Markers button (Music Speed Changer style)
+                if (onSaveMarker != null) {
+                    Box {
+                        IconButton(
+                            onClick = { showMarkersMenu = !showMarkersMenu },
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                if (savedMarkers.isNotEmpty()) Icons.Default.Bookmark
+                                else Icons.Default.BookmarkAdd,
+                                contentDescription = "Saved Markers",
+                                modifier = Modifier.size(18.dp),
+                                tint = if (savedMarkers.isNotEmpty())
+                                    MaterialTheme.colorScheme.primary
+                                else
+                                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                            )
+                        }
+
+                        // Badge for marker count
+                        if (savedMarkers.isNotEmpty()) {
+                            Surface(
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .size(14.dp),
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.primary
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Text(
+                                        text = "${savedMarkers.size}",
+                                        fontSize = 8.sp,
+                                        color = MaterialTheme.colorScheme.onPrimary,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
 
-        // Control buttons
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            // Set A button
-            OutlinedButton(
-                onClick = { onLoopStartChange((currentPosition * durationMs).toLong()) },
-                modifier = Modifier.height(32.dp),
-                colors = ButtonDefaults.outlinedButtonColors(
-                    contentColor = Color(0xFF4CAF50)
-                )
+        // Markers dropdown menu
+        if (showMarkersMenu && onSaveMarker != null) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 4.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant
+                ),
+                shape = RoundedCornerShape(8.dp)
             ) {
-                Text("A", fontWeight = FontWeight.Bold, fontSize = 12.sp)
-            }
+                Column(modifier = Modifier.padding(8.dp)) {
+                    // Header
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "📌 Saved Markers",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold
+                        )
 
-            // Set B button
-            OutlinedButton(
-                onClick = { onLoopEndChange((currentPosition * durationMs).toLong()) },
-                modifier = Modifier.height(32.dp),
-                colors = ButtonDefaults.outlinedButtonColors(
-                    contentColor = Color(0xFFF44336)
-                )
+                        // Save current button
+                        if (loopStartMs != null && loopEndMs != null) {
+                            OutlinedButton(
+                                onClick = { showSaveDialog = true },
+                                modifier = Modifier.height(28.dp),
+                                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.Add,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Save", fontSize = 11.sp)
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    if (savedMarkers.isEmpty()) {
+                        Text(
+                            text = "No saved markers yet.\nSet A-B loop and save it!",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(8.dp)
+                        )
+                    } else {
+                        // Markers list
+                        savedMarkers.forEach { marker ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .clickable {
+                                        onLoadMarker?.invoke(marker)
+                                        showMarkersMenu = false
+                                    }
+                                    .background(MaterialTheme.colorScheme.surface)
+                                    .padding(8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = marker.name,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                    Text(
+                                        text = "${formatTimeWithMs(marker.startMs)} → ${formatTimeWithMs(marker.endMs)}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                    )
+                                }
+
+                                // Delete button
+                                IconButton(
+                                    onClick = { onDeleteMarker?.invoke(marker) },
+                                    modifier = Modifier.size(24.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Stop,
+                                        contentDescription = "Delete",
+                                        modifier = Modifier.size(14.dp),
+                                        tint = MaterialTheme.colorScheme.error
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(4.dp))
+                        }
+                    }
+
+                    // Close button
+                    TextButton(
+                        onClick = { showMarkersMenu = false },
+                        modifier = Modifier.align(Alignment.End)
+                    ) {
+                        Text("Close", fontSize = 12.sp)
+                    }
+                }
+            }
+        }
+
+        // Save marker dialog (simple inline input)
+        if (showSaveDialog && loopStartMs != null && loopEndMs != null) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 4.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer
+                ),
+                shape = RoundedCornerShape(8.dp)
             ) {
-                Text("B", fontWeight = FontWeight.Bold, fontSize = 12.sp)
-            }
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Text(
+                        text = "Save Marker",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold
+                    )
 
-            // Clear loop button
-            if (loopStartMs != null || loopEndMs != null) {
-                OutlinedButton(
-                    onClick = onClearLoop,
-                    modifier = Modifier.height(32.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Marker name input
+                    androidx.compose.material3.OutlinedTextField(
+                        value = markerName,
+                        onValueChange = { markerName = it },
+                        label = { Text("Marker Name", fontSize = 12.sp) },
+                        placeholder = { Text("e.g., Chorus, Verse 1", fontSize = 12.sp) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp)
                     )
-                ) {
-                    Icon(
-                        Icons.Default.Stop,
-                        contentDescription = "Clear Loop",
-                        modifier = Modifier.size(16.dp)
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    Text(
+                        text = "${formatTimeWithMs(loopStartMs)} → ${formatTimeWithMs(loopEndMs)} (${formatTimeWithMs(loopEndMs - loopStartMs)})",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
                     )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        TextButton(onClick = {
+                            showSaveDialog = false
+                            markerName = ""
+                        }) {
+                            Text("Cancel")
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Button(
+                            onClick = {
+                                val name = markerName.ifBlank {
+                                    "Marker ${savedMarkers.size + 1}"
+                                }
+                                onSaveMarker?.invoke(name, loopStartMs, loopEndMs)
+                                showSaveDialog = false
+                                markerName = ""
+                            }
+                        ) {
+                            Text("Save")
+                        }
+                    }
                 }
             }
         }
     }
+}
+
+/**
+ * Format time with milliseconds for precise display
+ */
+private fun formatTimeWithMs(ms: Long): String {
+    val totalSeconds = ms / 1000
+    val minutes = totalSeconds / 60
+    val seconds = totalSeconds % 60
+    val millis = (ms % 1000) / 10  // Show centiseconds
+    return "%d:%02d.%02d".format(minutes, seconds, millis)
 }
 
 /**
@@ -734,7 +1349,7 @@ private fun DrawScope.drawTimeRuler(
 }
 
 /**
- * Draw loop marker (A or B)
+ * Draw loop marker (A or B) with high visibility
  */
 private fun DrawScope.drawLoopMarker(
     x: Float,
@@ -743,9 +1358,25 @@ private fun DrawScope.drawLoopMarker(
     label: String,
     isDragging: Boolean
 ) {
-    val markerWidth = if (isDragging) 4.dp.toPx() else 3.dp.toPx()
+    val markerWidth = if (isDragging) 6.dp.toPx() else 4.dp.toPx()
 
-    // Marker line
+    // Glow effect behind marker line
+    drawLine(
+        color = color.copy(alpha = 0.4f),
+        start = Offset(x, 0f),
+        end = Offset(x, canvasHeight),
+        strokeWidth = markerWidth + 6.dp.toPx()
+    )
+
+    // Black outline for contrast
+    drawLine(
+        color = Color.Black,
+        start = Offset(x, 0f),
+        end = Offset(x, canvasHeight),
+        strokeWidth = markerWidth + 2.dp.toPx()
+    )
+
+    // Main marker line
     drawLine(
         color = color,
         start = Offset(x, 0f),
@@ -753,20 +1384,38 @@ private fun DrawScope.drawLoopMarker(
         strokeWidth = markerWidth
     )
 
-    // Marker circle at top
-    val circleRadius = if (isDragging) 14.dp.toPx() else 12.dp.toPx()
+    // Marker circle at top with black outline
+    val circleRadius = if (isDragging) 16.dp.toPx() else 14.dp.toPx()
+    val circleCenter = Offset(x, 18.dp.toPx())
+
+    // Black outline circle
+    drawCircle(
+        color = Color.Black,
+        radius = circleRadius + 2.dp.toPx(),
+        center = circleCenter
+    )
+
+    // Main circle
     drawCircle(
         color = color,
         radius = circleRadius,
-        center = Offset(x, 16.dp.toPx())
+        center = circleCenter
+    )
+
+    // Label text (A or B) in black for contrast
+    // Draw a smaller inner circle for text background
+    drawCircle(
+        color = Color.Black.copy(alpha = 0.7f),
+        radius = circleRadius - 4.dp.toPx(),
+        center = circleCenter
     )
 
     // Dragging highlight
     if (isDragging) {
         drawCircle(
-            color = color.copy(alpha = 0.3f),
-            radius = 20.dp.toPx(),
-            center = Offset(x, 16.dp.toPx())
+            color = color.copy(alpha = 0.4f),
+            radius = 24.dp.toPx(),
+            center = circleCenter
         )
     }
 }
