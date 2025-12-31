@@ -228,7 +228,16 @@ fun EasyPlayerScreen(
             onLoudnessChange = { viewModel.setBattleLoudness(it) },
             onClarityChange = { viewModel.setBattleClarity(it) },
             onSpatialChange = { viewModel.setBattleSpatial(it) },
-            onResetAudioEffects = { viewModel.resetBattleAudioEffects() }
+            onResetAudioEffects = { viewModel.resetBattleAudioEffects() },
+            // Safe Mode & Engine Selection
+            safeMode = safeMode,
+            audioEngine = audioEngine,
+            hardwareProtection = hardwareProtection,
+            audiophileMode = audiophileMode,
+            onSafeModeChange = { viewModel.setSafeMode(it) },
+            onAudioEngineChange = { viewModel.setAudioEngine(it) },
+            onHardwareProtectionChange = { viewModel.setHardwareProtection(it) },
+            onAudiophileModeChange = { viewModel.setAudiophileMode(it) }
         )
     }
 }
@@ -697,7 +706,16 @@ private fun NowPlayingSection(
     onLoudnessChange: (Int) -> Unit = {},
     onClarityChange: (Int) -> Unit = {},
     onSpatialChange: (Int) -> Unit = {},
-    onResetAudioEffects: () -> Unit = {}
+    onResetAudioEffects: () -> Unit = {},
+    // Safe Mode & Engine Selection
+    safeMode: Boolean = true,
+    audioEngine: AudioEngineType = AudioEngineType.SOUNDTOUCH,
+    hardwareProtection: Boolean = true,
+    audiophileMode: Boolean = false,
+    onSafeModeChange: (Boolean) -> Unit = {},
+    onAudioEngineChange: (AudioEngineType) -> Unit = {},
+    onHardwareProtectionChange: (Boolean) -> Unit = {},
+    onAudiophileModeChange: (Boolean) -> Unit = {}
 ) {
     val currentSong = playbackState.currentSong
     
@@ -881,10 +899,10 @@ private fun NowPlayingSection(
                 onLoudnessChange = onLoudnessChange,
                 onClarityChange = onClarityChange,
                 onSpatialChange = onSpatialChange,
-                onSafeModeChange = { viewModel.setSafeMode(it) },
-                onAudioEngineChange = { viewModel.setAudioEngine(it) },
-                onHardwareProtectionChange = { viewModel.setHardwareProtection(it) },
-                onAudiophileModeChange = { viewModel.setAudiophileMode(it) },
+                onSafeModeChange = onSafeModeChange,
+                onAudioEngineChange = onAudioEngineChange,
+                onHardwareProtectionChange = onHardwareProtectionChange,
+                onAudiophileModeChange = onAudiophileModeChange,
                 onResetAll = onResetAudioEffects
             )
         }

@@ -95,7 +95,7 @@ public:
         spCompressor->releaseSec = 0.3f;
         spCompressor->ratio = 4.0f;
         spCompressor->thresholdDb = -10.0f;
-        spCompressor->hpCutoffHz = 1;
+        spCompressor->hpCutOffHz = 1;
 
         spLimiter = new Superpowered::Limiter(44100);
         spLimiter->enabled = true;

@@ -87,16 +87,20 @@ if(USE_RUBBERBAND AND EXISTS "${RUBBERBAND_DIR}/src/RubberBandStretcher.cpp")
 
     # Rubberband configuration for Android
     add_definitions(-DUSE_RUBBERBAND=1)
+    add_definitions(-DUSE_BUILTIN_FFT)
+    add_definitions(-DUSE_BQRESAMPLER)
     add_definitions(-DHAVE_POSIX_MEMALIGN)
     add_definitions(-DNO_THREAD_CHECKS)
     add_definitions(-DUSE_PTHREADS)
     add_definitions(-DLACK_POSIX_MEMALIGN)
     add_definitions(-DNO_TIMING)
+    add_definitions(-DNO_THREADING)
 
     # Rubberband source files (updated for v3.x structure)
     set(RUBBERBAND_SOURCES
         # Main API
         ${RUBBERBAND_DIR}/src/RubberBandStretcher.cpp
+        ${RUBBERBAND_DIR}/src/RubberBandLiveShifter.cpp
         ${RUBBERBAND_DIR}/src/rubberband-c.cpp
 
         # Common utilities
@@ -124,6 +128,7 @@ if(USE_RUBBERBAND AND EXISTS "${RUBBERBAND_DIR}/src/RubberBandStretcher.cpp")
 
         # Finer engine (R3 - highest quality)
         ${RUBBERBAND_DIR}/src/finer/R3Stretcher.cpp
+        ${RUBBERBAND_DIR}/src/finer/R3LiveShifter.cpp
     )
 else()
     message(STATUS "Rubberband: DISABLED (download from https://breakfastquay.com/rubberband/)")

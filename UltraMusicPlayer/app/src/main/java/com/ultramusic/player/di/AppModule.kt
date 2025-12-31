@@ -11,6 +11,7 @@ import com.ultramusic.player.audio.CrowdAnalyzer
 import com.ultramusic.player.audio.FrequencyWarfare
 import com.ultramusic.player.audio.AudioFocusManager
 import com.ultramusic.player.audio.NativeBattleEngine
+import com.ultramusic.player.audio.GainStagingManager
 import com.ultramusic.player.audio.SongBattleAnalyzer
 import com.ultramusic.player.audio.VenueProfiler
 import com.ultramusic.player.audio.ExtremeNoiseVoiceCapture
@@ -220,9 +221,11 @@ object AppModule {
     @Provides
     @Singleton
     fun provideAudioBattleEngine(
-        @ApplicationContext context: Context
+        @ApplicationContext context: Context,
+        gainStagingManager: GainStagingManager,
+        nativeBattleEngine: NativeBattleEngine
     ): AudioBattleEngine {
-        return AudioBattleEngine(context)
+        return AudioBattleEngine(context, gainStagingManager, nativeBattleEngine)
     }
     
     @Provides
