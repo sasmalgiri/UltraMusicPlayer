@@ -1,0 +1,2071 @@
+package com.ultramusic.player.ui
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import androidx.media3.common.util.UnstableApi
+import com.ultramusic.player.ai.CounterEngineState
+import com.ultramusic.player.ai.CounterRecommendation
+import com.ultramusic.player.ai.CounterSongEngine
+import com.ultramusic.player.ai.CounterStrategy
+import com.ultramusic.player.audio.AudioBattleEngine
+import com.ultramusic.player.audio.AudioEngineType
+import com.ultramusic.player.audio.ActiveBattleSystem
+import com.ultramusic.player.audio.ActiveBattleState
+import com.ultramusic.player.audio.ActiveBattleMode
+import com.ultramusic.player.audio.AttackOpportunity
+import com.ultramusic.player.audio.BattleLogEntry
+import com.ultramusic.player.audio.BattleScript
+import com.ultramusic.player.audio.BattleAdvice
+import com.ultramusic.player.audio.BattleIntelligence
+import com.ultramusic.player.audio.BattleMode
+import com.ultramusic.player.audio.BattlePreset
+import com.ultramusic.player.audio.CrowdAnalyzer
+import com.ultramusic.player.audio.CrowdTrend
+import com.ultramusic.player.audio.CrowdMood
+import com.ultramusic.player.audio.DropRecommendation
+import com.ultramusic.player.audio.FrequencyWarfare
+import com.ultramusic.player.audio.WarfareTactic
+import com.ultramusic.player.audio.FrequencyAnalysis
+import com.ultramusic.player.audio.EQBand
+import com.ultramusic.player.audio.EQSuggestion
+import com.ultramusic.player.audio.OpponentAnalysis
+import com.ultramusic.player.audio.SongBattleAnalyzer
+import com.ultramusic.player.audio.SongBattleRating
+import com.ultramusic.player.audio.VenueProfile
+import com.ultramusic.player.audio.VenueProfiler
+import com.ultramusic.player.audio.AudioQualityManager
+import com.ultramusic.player.audio.ExtremeNoiseVoiceCapture
+import com.ultramusic.player.audio.ExtremeCaptureState
+import com.ultramusic.player.audio.MusicController
+import com.ultramusic.player.audio.WaveformExtractor
+import com.ultramusic.player.audio.BeatDetector
+import com.ultramusic.player.audio.BeatMarker
+import android.net.Uri
+import com.ultramusic.player.audio.NoiseLevel
+import com.ultramusic.player.audio.VoiceSearchManager
+import com.ultramusic.player.audio.VoiceSearchState
+import com.ultramusic.player.data.ActivePlaylist
+import com.ultramusic.player.data.AddResult
+import com.ultramusic.player.data.AudioPreset
+import com.ultramusic.player.data.BrowseItem
+import com.ultramusic.player.data.FolderRepository
+import com.ultramusic.player.data.MusicRepository
+import com.ultramusic.player.data.PlaybackState
+import com.ultramusic.player.data.PlaylistSearchState
+import com.ultramusic.player.data.SmartPlaylistManager
+import com.ultramusic.player.data.SmartSearchEngine
+import com.ultramusic.player.data.Song
+import com.ultramusic.player.data.SongMetadataManager
+import com.ultramusic.player.data.SortOption
+import com.ultramusic.player.PermissionState
+import com.ultramusic.player.ui.components.FolderItem
+import com.ultramusic.player.ui.components.FolderViewMode
+import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
+import javax.inject.Inject
+
+/**
+ * Browse tabs for the home screen
+ */
+enum class BrowseTab {
+    ALL_SONGS,
+    ARTISTS,
+    ALBUMS,
+    FOLDERS
+}
+
+/**
+ * UI State for the main screen
+ */
+data class MainUiState(
+    val isLoading: Boolean = true,
+    val songs: List<Song> = emptyList(),
+    val filteredSongs: List<Song> = emptyList(),
+    val searchQuery: String = "",
+    val sortOption: SortOption = SortOption.TITLE,
+    val selectedPreset: AudioPreset? = null,
+    val showSpeedPitchPanel: Boolean = false,
+    val showPresetPanel: Boolean = false,
+    val showABLoopPanel: Boolean = false,
+    val errorMessage: String? = null,
+    val qualityWarning: String? = null,
+    val qualityPercent: Int = 100,
+    val formantPreservation: Boolean = true,
+    // Browse tabs
+    val selectedBrowseTab: BrowseTab = BrowseTab.ALL_SONGS,
+    val artistsList: List<Pair<String, Int>> = emptyList(), // Artist name to song count
+    val albumsList: List<Triple<String, String, Int>> = emptyList(), // Album, Artist, song count
+    // Selection mode
+    val isSelectionMode: Boolean = false,
+    val selectedSongIds: Set<Long> = emptySet()
+)
+
+@HiltViewModel
+@UnstableApi
+class MainViewModel @Inject constructor(
+    private val musicRepository: MusicRepository,
+    private val folderRepository: FolderRepository,
+    private val musicController: MusicController,
+    private val voiceSearchManager: VoiceSearchManager,
+    private val extremeVoiceCapture: ExtremeNoiseVoiceCapture,
+    private val audioQualityManager: AudioQualityManager,
+    private val smartSearchEngine: SmartSearchEngine,
+    private val songMetadataManager: SongMetadataManager,
+    private val smartPlaylistManager: SmartPlaylistManager,
+    private val counterSongEngine: CounterSongEngine,
+    private val audioBattleEngine: AudioBattleEngine,
+    private val battleIntelligence: BattleIntelligence,
+    private val songBattleAnalyzer: SongBattleAnalyzer,
+    private val venueProfiler: VenueProfiler,
+    private val activeBattleSystem: ActiveBattleSystem,
+    private val crowdAnalyzer: CrowdAnalyzer,
+    private val frequencyWarfare: FrequencyWarfare,
+    val localBattleAnalyzer: com.ultramusic.player.core.LocalBattleAnalyzer,
+    val battleArmory: com.ultramusic.player.core.BattleArmory,
+    val autoClipDetector: com.ultramusic.player.core.AutoClipDetector,
+    val grokAIService: com.ultramusic.player.ai.GrokAIService,
+    private val waveformExtractor: WaveformExtractor,
+    private val beatDetector: BeatDetector
+) : ViewModel() {
+    
+    private val _uiState = MutableStateFlow(MainUiState())
+    val uiState: StateFlow<MainUiState> = _uiState.asStateFlow()
+
+    val playbackState: StateFlow<PlaybackState> = musicController.playbackState
+    val queue: StateFlow<List<Song>> = musicController.queue
+
+    // ==================== PERMISSION & SCANNING STATE ====================
+
+    private val _permissionState = MutableStateFlow(PermissionState.UNKNOWN)
+    val permissionState: StateFlow<PermissionState> = _permissionState.asStateFlow()
+
+    private val _isScanning = MutableStateFlow(false)
+    val isScanning: StateFlow<Boolean> = _isScanning.asStateFlow()
+
+    private var hasScannedOnce = false
+
+    /**
+     * Called when storage/audio permission is granted
+     */
+    fun onPermissionGranted() {
+        _permissionState.value = PermissionState.GRANTED
+    }
+
+    /**
+     * Called when storage/audio permission is denied
+     */
+    fun onPermissionDenied() {
+        _permissionState.value = PermissionState.DENIED
+    }
+
+    /**
+     * Refresh the music library (rescan all storage)
+     */
+    fun refreshLibrary() {
+        hasScannedOnce = false
+        loadMusic()
+    }
+
+    // ==================== AUTO CLIP DETECTION ====================
+    private val _detectedClips = MutableStateFlow<List<com.ultramusic.player.core.DetectedClip>>(emptyList())
+    val detectedClips: StateFlow<List<com.ultramusic.player.core.DetectedClip>> = _detectedClips.asStateFlow()
+    
+    private val _isDetectingClips = MutableStateFlow(false)
+    val isDetectingClips: StateFlow<Boolean> = _isDetectingClips.asStateFlow()
+    
+    // ==================== FOLDER BROWSING ====================
+    
+    private val _currentFolderPath = MutableStateFlow("")
+    val currentFolderPath: StateFlow<String> = _currentFolderPath.asStateFlow()
+    
+    private val _browseItems = MutableStateFlow<List<BrowseItem>>(emptyList())
+    val browseItems: StateFlow<List<BrowseItem>> = _browseItems.asStateFlow()
+    
+    private val _breadcrumbs = MutableStateFlow<List<Pair<String, String>>>(listOf("Home" to ""))
+    val breadcrumbs: StateFlow<List<Pair<String, String>>> = _breadcrumbs.asStateFlow()
+    
+    // ==================== VOICE SEARCH ====================
+    
+    val voiceSearchState: StateFlow<VoiceSearchState> = voiceSearchManager.state
+    val noiseLevel: StateFlow<Float> = voiceSearchManager.noiseLevel
+    
+    // Extreme noise voice capture states
+    val extremeVoiceState: StateFlow<ExtremeCaptureState> = extremeVoiceCapture.state
+    val currentNoiseLevel: StateFlow<NoiseLevel> = extremeVoiceCapture.noiseLevel
+    val noiseLevelDb: StateFlow<Float> = extremeVoiceCapture.noiseLevelDb
+    val canSpeak: StateFlow<Boolean> = extremeVoiceCapture.canSpeak
+    
+    private val _voiceSearchResults = MutableStateFlow<List<Song>>(emptyList())
+    val voiceSearchResults: StateFlow<List<Song>> = _voiceSearchResults.asStateFlow()
+    
+    private val _voiceCapabilities = MutableStateFlow("Checking capabilities...")
+    val voiceCapabilities: StateFlow<String> = _voiceCapabilities.asStateFlow()
+    
+    // ==================== SMART SEARCH ====================
+    
+    private val _searchSuggestions = MutableStateFlow<List<String>>(emptyList())
+    val searchSuggestions: StateFlow<List<String>> = _searchSuggestions.asStateFlow()
+    
+    // ==================== SMART PLAYLIST ====================
+    
+    val activePlaylist: StateFlow<ActivePlaylist> = smartPlaylistManager.activePlaylist
+    val playlistSearchState: StateFlow<PlaylistSearchState> = smartPlaylistManager.searchState
+    val isPlaylistAddingMode: StateFlow<Boolean> = smartPlaylistManager.isAddingMode
+    
+    private val _lastAddResult = MutableStateFlow<AddResult?>(null)
+    val lastAddResult: StateFlow<AddResult?> = _lastAddResult.asStateFlow()
+    
+    // ==================== COUNTER SONG ENGINE ====================
+    
+    val counterEngineState: StateFlow<CounterEngineState> = counterSongEngine.state
+    val counterRecommendations: StateFlow<List<CounterRecommendation>> = counterSongEngine.recommendations
+    
+    // ==================== AUDIO BATTLE ENGINE ====================
+    
+    val battleEngineEnabled: StateFlow<Boolean> = audioBattleEngine.isEnabled
+    val battleMode: StateFlow<BattleMode> = audioBattleEngine.battleMode
+    val battleBassLevel: StateFlow<Int> = audioBattleEngine.bassLevel
+    val battleLoudness: StateFlow<Int> = audioBattleEngine.loudnessGain
+    val battleClarity: StateFlow<Int> = audioBattleEngine.clarityLevel
+    val battleSpatial: StateFlow<Int> = audioBattleEngine.spatialLevel
+    val battleEQBands: StateFlow<List<EQBand>> = audioBattleEngine.eqBands
+    val battlePreset: StateFlow<BattlePreset?> = audioBattleEngine.currentPreset
+
+    // ==================== SAFE MODE (FULL SEND TOGGLE) ====================
+
+    /**
+     * Safe Mode state
+     * ON: AGR + Limiter prevent clipping (clean output)
+     * OFF: FULL SEND - no limits, maximum power
+     */
+    val safeMode: StateFlow<Boolean> = audioBattleEngine.safeMode
+
+    /**
+     * Toggle Safe Mode
+     */
+    fun setSafeMode(enabled: Boolean) {
+        audioBattleEngine.setSafeMode(enabled)
+    }
+
+    // ==================== AUDIO ENGINE SELECTION ====================
+
+    val audioEngine: StateFlow<AudioEngineType> = audioBattleEngine.audioEngine
+
+    /**
+     * Set audio engine for time-stretching/pitch-shifting
+     */
+    fun setAudioEngine(engine: AudioEngineType) {
+        audioBattleEngine.setAudioEngine(engine)
+    }
+
+    // ==================== HARDWARE PROTECTION (STRONG SAFETY) ====================
+
+    /**
+     * Hardware Protection - Protects speakers even when Safe Mode is OFF
+     * ON: Hard limiter + sub-bass filter + DC blocking (prevents speaker damage)
+     * OFF: Full output, no protection (dangerous for speakers!)
+     */
+    val hardwareProtection: StateFlow<Boolean> = audioBattleEngine.hardwareProtection
+
+    /**
+     * Toggle Hardware Protection
+     */
+    fun setHardwareProtection(enabled: Boolean) {
+        audioBattleEngine.setHardwareProtection(enabled)
+    }
+
+    // ==================== AUDIOPHILE MODE (PURE QUALITY) ====================
+
+    /**
+     * Audiophile Mode - Clean, superior quality audio
+     * ON: Disables all coloring effects (compressor, exciter, sub-harmonic),
+     *     enables clarity enhancement, uses highest quality engine
+     * OFF: Normal battle mode processing
+     */
+    val audiophileMode: StateFlow<Boolean> = audioBattleEngine.audiophileMode
+
+    /**
+     * Toggle Audiophile Mode
+     */
+    fun setAudiophileMode(enabled: Boolean) {
+        audioBattleEngine.setAudiophileMode(enabled)
+    }
+
+    // Advanced manual controls
+    val compressorEnabled: StateFlow<Boolean> = audioBattleEngine.compressorEnabled
+    val compressorThreshold: StateFlow<Float> = audioBattleEngine.compressorThreshold
+    val compressorRatio: StateFlow<Float> = audioBattleEngine.compressorRatio
+    val compressorAttack: StateFlow<Float> = audioBattleEngine.compressorAttack
+    val compressorRelease: StateFlow<Float> = audioBattleEngine.compressorRelease
+    val compressorMakeupGain: StateFlow<Float> = audioBattleEngine.compressorMakeupGain
+
+    val limiterEnabled: StateFlow<Boolean> = audioBattleEngine.limiterEnabled
+    val limiterThreshold: StateFlow<Float> = audioBattleEngine.limiterThreshold
+    val limiterCeiling: StateFlow<Float> = audioBattleEngine.limiterCeiling
+    val limiterAttack: StateFlow<Float> = audioBattleEngine.limiterAttack
+    val limiterRelease: StateFlow<Float> = audioBattleEngine.limiterRelease
+
+    val bassFrequency: StateFlow<Float> = audioBattleEngine.bassFrequency
+
+    val stereoWidthEnabled: StateFlow<Boolean> = audioBattleEngine.stereoWidthEnabled
+    val stereoWidth: StateFlow<Int> = audioBattleEngine.stereoWidth
+
+    val exciterEnabled: StateFlow<Boolean> = audioBattleEngine.exciterEnabled
+    val exciterDrive: StateFlow<Int> = audioBattleEngine.exciterDrive
+    val exciterMix: StateFlow<Int> = audioBattleEngine.exciterMix
+
+    val reverbEnabled: StateFlow<Boolean> = audioBattleEngine.reverbEnabled
+    val reverbPreset: StateFlow<Int> = audioBattleEngine.reverbPreset
+
+    // Danger mode
+    val dangerModeEnabled: StateFlow<Boolean> = audioBattleEngine.dangerModeEnabled
+
+    // Peak dB monitoring
+    val currentPeakDb: StateFlow<Float> = audioBattleEngine.currentPeakDb
+    val isClipping: StateFlow<Boolean> = audioBattleEngine.isClipping
+
+    // Quick profile slots
+    val profileSlotA: StateFlow<com.ultramusic.player.audio.QuickProfile?> = audioBattleEngine.profileSlotA
+    val profileSlotB: StateFlow<com.ultramusic.player.audio.QuickProfile?> = audioBattleEngine.profileSlotB
+    val profileSlotC: StateFlow<com.ultramusic.player.audio.QuickProfile?> = audioBattleEngine.profileSlotC
+    val activeProfileSlot: StateFlow<Char?> = audioBattleEngine.activeProfileSlot
+
+    // ==================== BATTLE INTELLIGENCE ====================
+    
+    val battleIntelListening: StateFlow<Boolean> = battleIntelligence.isListening
+    val opponentAnalysis: StateFlow<OpponentAnalysis> = battleIntelligence.opponentAnalysis
+    val venueSPL: StateFlow<Float> = battleIntelligence.venueSPL
+    val frequencySpectrum: StateFlow<List<Float>> = battleIntelligence.frequencySpectrum
+    val counterEQSuggestions: StateFlow<List<EQSuggestion>> = battleIntelligence.counterEQSuggestion
+    val battleAdvice: StateFlow<List<BattleAdvice>> = battleIntelligence.battleAdvice
+    
+    // ==================== SONG BATTLE ANALYZER ====================
+    
+    val analyzedSongRatings: StateFlow<Map<Long, SongBattleRating>> = songBattleAnalyzer.analyzedSongs
+    val isAnalyzingSongs: StateFlow<Boolean> = songBattleAnalyzer.isAnalyzing
+    
+    // ==================== VENUE PROFILER ====================
+    
+    val isProfilingVenue: StateFlow<Boolean> = venueProfiler.isProfiling
+    val currentVenueProfile: StateFlow<VenueProfile?> = venueProfiler.currentVenue
+    
+    // ==================== ACTIVE BATTLE SYSTEM ====================
+    
+    val activeBattleState: StateFlow<ActiveBattleState> = activeBattleSystem.battleState
+    val activeBattleMode: StateFlow<ActiveBattleMode> = activeBattleSystem.battleMode
+    val battleMomentum: StateFlow<Int> = activeBattleSystem.momentum
+    val opponentSPL: StateFlow<Float> = activeBattleSystem.opponentSPL
+    val ourSPL: StateFlow<Float> = activeBattleSystem.ourSPL
+    val attackOpportunity: StateFlow<AttackOpportunity?> = activeBattleSystem.attackOpportunity
+    val battleLog: StateFlow<List<BattleLogEntry>> = activeBattleSystem.battleLog
+    val nextSongSuggestion: StateFlow<Song?> = activeBattleSystem.nextSongSuggestion
+    val autoCounterEnabled: StateFlow<Boolean> = activeBattleSystem.autoCounterEnabled
+    val autoVolumeEnabled: StateFlow<Boolean> = activeBattleSystem.autoVolumeEnabled
+    val autoQueueEnabled: StateFlow<Boolean> = activeBattleSystem.autoQueueEnabled
+    
+    // ==================== CROWD ANALYZER ====================
+    
+    val isCrowdAnalyzing: StateFlow<Boolean> = crowdAnalyzer.isAnalyzing
+    val crowdEnergy: StateFlow<Int> = crowdAnalyzer.crowdEnergy
+    val crowdTrend: StateFlow<CrowdTrend> = crowdAnalyzer.crowdTrend
+    val crowdMood: StateFlow<CrowdMood> = crowdAnalyzer.crowdMood
+    val dropRecommendation: StateFlow<DropRecommendation?> = crowdAnalyzer.dropRecommendation
+    
+    // ==================== FREQUENCY WARFARE ====================
+
+    val activeTactic: StateFlow<WarfareTactic?> = frequencyWarfare.activeTactic
+    val isWarfareActive: StateFlow<Boolean> = frequencyWarfare.isActive
+
+    // ==================== WAVEFORM ====================
+
+    private val _currentWaveform = MutableStateFlow<List<Float>>(emptyList())
+    val currentWaveform: StateFlow<List<Float>> = _currentWaveform.asStateFlow()
+
+    val isExtractingWaveform: StateFlow<Boolean> = waveformExtractor.isExtracting
+    val waveformProgress: StateFlow<Float> = waveformExtractor.extractionProgress
+
+    // A-B Loop state
+    private val _loopStartMs = MutableStateFlow<Long?>(null)
+    val loopStartMs: StateFlow<Long?> = _loopStartMs.asStateFlow()
+
+    private val _loopEndMs = MutableStateFlow<Long?>(null)
+    val loopEndMs: StateFlow<Long?> = _loopEndMs.asStateFlow()
+
+    private val _isLoopEnabled = MutableStateFlow(false)
+    val isLoopEnabled: StateFlow<Boolean> = _isLoopEnabled.asStateFlow()
+
+    // ==================== BEAT DETECTION ====================
+
+    private val _currentBeatMarkers = MutableStateFlow<List<BeatMarker>>(emptyList())
+    val currentBeatMarkers: StateFlow<List<BeatMarker>> = _currentBeatMarkers.asStateFlow()
+
+    val isDetectingBeats: StateFlow<Boolean> = beatDetector.isDetecting
+    val beatDetectionProgress: StateFlow<Float> = beatDetector.detectionProgress
+    val estimatedBpm: StateFlow<Float> = beatDetector.estimatedBpm
+
+    // ==================== ENHANCED FOLDER BROWSER ====================
+
+    private val _folderViewMode = MutableStateFlow(FolderViewMode.LINEAR)
+    val folderViewMode: StateFlow<FolderViewMode> = _folderViewMode.asStateFlow()
+
+    private val _enhancedFolders = MutableStateFlow<List<FolderItem>>(emptyList())
+    val enhancedFolders: StateFlow<List<FolderItem>> = _enhancedFolders.asStateFlow()
+
+    private val _folderShortcuts = MutableStateFlow<List<FolderItem>>(emptyList())
+    val folderShortcuts: StateFlow<List<FolderItem>> = _folderShortcuts.asStateFlow()
+
+    // ==================== DOMINANT MODE (DJ MODE) ====================
+
+    /**
+     * Dominant mode state - when enabled, app ignores ALL audio interruptions
+     * (calls, notifications, other apps) and keeps playing
+     */
+    val isDominantMode: StateFlow<Boolean> = musicController.getDominantModeState()
+
+    /**
+     * Enable/disable dominant mode (DJ Mode)
+     * When enabled, the app will NEVER pause for calls, notifications, or other apps
+     */
+    fun setDominantMode(enabled: Boolean) {
+        musicController.setDominantMode(enabled)
+    }
+
+    init {
+        // NOTE: loadMusic() is now called from MainActivity after permission is granted
+        observeVoiceSearch()
+        observeExtremeVoiceCapture()
+        checkVoiceCapabilities()
+        observeQuality()
+        observePlaylistChanges()
+    }
+
+    // ==================== MUSIC LOADING ====================
+
+    /**
+     * Load all music from device storage (internal + external/SD card)
+     * Called automatically after storage permission is granted
+     */
+    fun loadMusic() {
+        // Prevent duplicate scans
+        if (hasScannedOnce && _uiState.value.songs.isNotEmpty()) {
+            _isScanning.value = false
+            return
+        }
+
+        viewModelScope.launch {
+            _isScanning.value = true
+            _uiState.value = _uiState.value.copy(isLoading = true, errorMessage = null)
+
+            try {
+                // Scan ALL storage including SD card via MediaStore
+                folderRepository.scanMusicWithFolders().collectLatest { (songs, _) ->
+                    hasScannedOnce = true
+                    val sorted = musicRepository.sortSongs(songs, _uiState.value.sortOption)
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        songs = sorted,
+                        filteredSongs = applySearch(sorted, _uiState.value.searchQuery)
+                    )
+                    _isScanning.value = false
+
+                    // Load root folders for browser
+                    updateFolderContents("")
+
+                    // Initialize playlist manager with all songs
+                    smartPlaylistManager.initialize(songs)
+
+                    // Initialize counter song engine with library
+                    initializeCounterEngine(songs)
+
+                    // Index songs for battle (INSTANT counter picks!)
+                    indexSongsForBattle(songs)
+
+                    // Update artists and albums lists for browse tabs
+                    updateArtistsAndAlbums()
+                }
+            } catch (e: Exception) {
+                _isScanning.value = false
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    errorMessage = "Failed to load music: ${e.message}"
+                )
+            }
+        }
+    }
+    
+    private fun observePlaylistChanges() {
+        viewModelScope.launch {
+            // When playlist moves to next song, update the music controller
+            smartPlaylistManager.activePlaylist.collectLatest { playlist ->
+                playlist.currentSong?.let { song ->
+                    // Sync with music controller if needed
+                    if (playbackState.value.currentSong?.id != song.id) {
+                        // Play the current song from playlist
+                        musicController.playSong(song, playlist.queue)
+                    }
+                }
+            }
+        }
+    }
+    
+    // ==================== BATTLE SONG DATABASE ====================
+    
+    /**
+     * Index songs for instant battle counter picks
+     * This runs ONCE when library loads, then results are persisted
+     */
+    private fun indexSongsForBattle(songs: List<Song>) {
+        viewModelScope.launch {
+            localBattleAnalyzer.indexLibrary(songs)
+        }
+    }
+    
+    // ==================== COUNTER SONG ENGINE ====================
+    
+    private fun initializeCounterEngine(songs: List<Song>) {
+        viewModelScope.launch {
+            counterSongEngine.indexLibrary(songs)
+        }
+    }
+    
+    /**
+     * Find counter song by opponent's song name
+     */
+    fun findCounterSong(
+        opponentSong: String,
+        opponentArtist: String?,
+        strategy: CounterStrategy = CounterStrategy.AUTO
+    ) {
+        counterSongEngine.findCounterByName(opponentSong, opponentArtist, strategy)
+    }
+    
+    /**
+     * Start listening to opponent's song to identify and counter
+     */
+    fun startListeningToOpponent() {
+        counterSongEngine.findCounterByListening(CounterStrategy.AUTO)
+    }
+    
+    /**
+     * Stop listening mode
+     */
+    fun stopListeningToOpponent() {
+        counterSongEngine.stopRealtimeMode()
+    }
+    
+    /**
+     * Start real-time counter mode
+     */
+    fun startRealtimeCounterMode(onUpdate: (List<CounterRecommendation>) -> Unit) {
+        counterSongEngine.startRealtimeCounterMode(CounterStrategy.AUTO, onUpdate)
+    }
+    
+    // ==================== AUDIO BATTLE ENGINE ====================
+    
+    /**
+     * Initialize battle engine with current audio session
+     */
+    fun initializeBattleEngine() {
+        val sessionId = musicController.getAudioSessionId()
+        if (sessionId != 0) {
+            audioBattleEngine.initialize(sessionId)
+        }
+    }
+    
+    /**
+     * Toggle battle engine on/off
+     */
+    fun toggleBattleEngine() {
+        if (battleEngineEnabled.value) {
+            audioBattleEngine.setBattleMode(BattleMode.OFF)
+        } else {
+            initializeBattleEngine()
+            audioBattleEngine.enable()
+        }
+    }
+    
+    /**
+     * Set battle mode preset
+     */
+    fun setBattleMode(mode: BattleMode) {
+        audioBattleEngine.setBattleMode(mode)
+    }
+    
+    /**
+     * Set bass boost level (0-1000)
+     */
+    fun setBattleBass(level: Int) {
+        audioBattleEngine.setBassBoost(level)
+    }
+    
+    /**
+     * Set loudness gain (0-1000 mB)
+     */
+    fun setBattleLoudness(gain: Int) {
+        audioBattleEngine.setLoudness(gain)
+    }
+    
+    /**
+     * Set clarity level (0-100)
+     */
+    fun setBattleClarity(level: Int) {
+        audioBattleEngine.setClarity(level)
+    }
+    
+    /**
+     * Set spatial/virtualizer level (0-1000)
+     */
+    fun setBattleSpatial(level: Int) {
+        audioBattleEngine.setVirtualizer(level)
+    }
+
+    /**
+     * Reset all audio effects to defaults
+     */
+    fun resetBattleAudioEffects() {
+        audioBattleEngine.setBassBoost(500)
+        audioBattleEngine.setLoudness(0)
+        audioBattleEngine.setClarity(50)
+        audioBattleEngine.setVirtualizer(500)
+    }
+
+    /**
+     * Set individual EQ band
+     */
+    fun setBattleEQBand(bandIndex: Int, level: Int) {
+        audioBattleEngine.setEQBand(bandIndex, level)
+    }
+    
+    /**
+     * Apply battle preset
+     */
+    fun applyBattlePreset(preset: BattlePreset) {
+        audioBattleEngine.applyPreset(preset)
+    }
+    
+    // Quick action buttons for battle
+    
+    /**
+     * Emergency bass boost - instant maximum bass
+     */
+    fun emergencyBassBoost() {
+        audioBattleEngine.emergencyBassBoost()
+    }
+    
+    /**
+     * Cut through opponent's sound
+     */
+    fun cutThrough() {
+        audioBattleEngine.cutThrough()
+    }
+    
+    /**
+     * Maximum everything - nuclear option
+     */
+    fun goNuclear() {
+        audioBattleEngine.goNuclear()
+    }
+
+    // ==================== ADVANCED MANUAL CONTROLS ====================
+
+    // Compressor controls
+    fun setCompressorEnabled(enabled: Boolean) {
+        audioBattleEngine.setCompressorEnabled(enabled)
+    }
+
+    fun setCompressorThreshold(thresholdDb: Float) {
+        audioBattleEngine.setCompressorThreshold(thresholdDb)
+    }
+
+    fun setCompressorRatio(ratio: Float) {
+        audioBattleEngine.setCompressorRatio(ratio)
+    }
+
+    fun setCompressorAttack(attackMs: Float) {
+        audioBattleEngine.setCompressorAttack(attackMs)
+    }
+
+    fun setCompressorRelease(releaseMs: Float) {
+        audioBattleEngine.setCompressorRelease(releaseMs)
+    }
+
+    fun setCompressorMakeupGain(gainDb: Float) {
+        audioBattleEngine.setCompressorMakeupGain(gainDb)
+    }
+
+    // Limiter controls
+    fun setLimiterEnabled(enabled: Boolean) {
+        audioBattleEngine.setLimiterEnabled(enabled)
+    }
+
+    fun setLimiterThreshold(thresholdDb: Float) {
+        audioBattleEngine.setLimiterThreshold(thresholdDb)
+    }
+
+    fun setLimiterCeiling(ceilingDb: Float) {
+        audioBattleEngine.setLimiterCeiling(ceilingDb)
+    }
+
+    fun setLimiterAttack(attackMs: Float) {
+        audioBattleEngine.setLimiterAttack(attackMs)
+    }
+
+    fun setLimiterRelease(releaseMs: Float) {
+        audioBattleEngine.setLimiterRelease(releaseMs)
+    }
+
+    // Bass frequency control
+    fun setBassFrequency(frequencyHz: Float) {
+        audioBattleEngine.setBassFrequency(frequencyHz)
+    }
+
+    // Stereo widener controls
+    fun setStereoWidthEnabled(enabled: Boolean) {
+        audioBattleEngine.setStereoWidthEnabled(enabled)
+    }
+
+    fun setStereoWidth(width: Int) {
+        audioBattleEngine.setStereoWidth(width)
+    }
+
+    // Harmonic exciter controls
+    fun setExciterEnabled(enabled: Boolean) {
+        audioBattleEngine.setExciterEnabled(enabled)
+    }
+
+    fun setExciterDrive(drive: Int) {
+        audioBattleEngine.setExciterDrive(drive)
+    }
+
+    fun setExciterMix(mix: Int) {
+        audioBattleEngine.setExciterMix(mix)
+    }
+
+    // Reverb controls
+    fun setReverbEnabled(enabled: Boolean) {
+        audioBattleEngine.setReverbEnabled(enabled)
+    }
+
+    fun setReverbPreset(preset: Int) {
+        audioBattleEngine.setReverbPreset(preset)
+    }
+
+    // Reset all effects to defaults
+    fun resetAllAudioEffects() {
+        audioBattleEngine.resetAllToDefaults()
+    }
+
+    // Danger mode control
+    fun setDangerModeEnabled(enabled: Boolean) {
+        audioBattleEngine.setDangerModeEnabled(enabled)
+    }
+
+    // Quick profile slot controls
+    fun saveToProfileSlot(slot: Char) {
+        audioBattleEngine.saveToProfileSlot(slot)
+    }
+
+    fun loadFromProfileSlot(slot: Char) {
+        audioBattleEngine.loadFromProfileSlot(slot)
+    }
+
+    fun clearProfileSlot(slot: Char) {
+        audioBattleEngine.clearProfileSlot(slot)
+    }
+
+    // ==================== BATTLE INTELLIGENCE ====================
+    
+    /**
+     * Toggle battle intelligence listening
+     */
+    fun toggleBattleIntel() {
+        if (battleIntelListening.value) {
+            battleIntelligence.stopListening()
+        } else {
+            battleIntelligence.startListening()
+        }
+    }
+    
+    /**
+     * Apply counter EQ suggestion
+     */
+    fun applyCounterEQ(suggestion: EQSuggestion) {
+        audioBattleEngine.setEQBand(suggestion.band, suggestion.suggestedBoost * 100)
+    }
+    
+    /**
+     * Enable auto-counter mode
+     */
+    fun enableAutoCounter() {
+        battleIntelligence.enableAutoCounter(audioBattleEngine)
+    }
+    
+    // ==================== SONG BATTLE ANALYZER ====================
+    
+    /**
+     * Analyze entire library for battle ratings
+     */
+    fun analyzeLibraryForBattle() {
+        viewModelScope.launch {
+            songBattleAnalyzer.analyzeLibrary(_uiState.value.songs)
+        }
+    }
+    
+    /**
+     * Get battle rating for a song
+     */
+    fun getSongBattleRating(songId: Long): SongBattleRating? {
+        return analyzedSongRatings.value[songId]
+    }
+    
+    /**
+     * Play song by ID
+     */
+    fun playSongById(songId: Long) {
+        val song = _uiState.value.songs.find { it.id == songId }
+        song?.let { playSong(it) }
+    }
+    
+    // ==================== VENUE PROFILER ====================
+    
+    /**
+     * Quick venue profile using ambient sound
+     */
+    fun quickProfileVenue() {
+        viewModelScope.launch {
+            venueProfiler.quickProfile()
+        }
+    }
+    
+    /**
+     * Full venue profile with test tones
+     */
+    fun fullProfileVenue() {
+        viewModelScope.launch {
+            venueProfiler.fullProfile { freq, duration ->
+                // Play test tone - would need audio generation
+            }
+        }
+    }
+    
+    /**
+     * Apply current venue profile to battle engine
+     */
+    fun applyVenueProfile() {
+        venueProfiler.applyToEngine(audioBattleEngine)
+    }
+    
+    // ==================== ACTIVE BATTLE SYSTEM ====================
+    
+    /**
+     * Initialize active battle system with all dependencies
+     */
+    fun initializeActiveBattle() {
+        activeBattleSystem.initialize(
+            engine = audioBattleEngine,
+            controller = musicController,
+            songs = _uiState.value.songs,
+            ratings = analyzedSongRatings.value
+        )
+        frequencyWarfare.initialize(audioBattleEngine)
+    }
+    
+    /**
+     * Start active battle AI
+     */
+    fun startActiveBattle(mode: ActiveBattleMode = ActiveBattleMode.BALANCED) {
+        initializeActiveBattle()
+        activeBattleSystem.startBattle(mode)
+        crowdAnalyzer.startAnalyzing()
+    }
+    
+    /**
+     * Pause active battle
+     */
+    fun pauseActiveBattle() {
+        activeBattleSystem.pauseBattle()
+    }
+    
+    /**
+     * Resume active battle
+     */
+    fun resumeActiveBattle() {
+        activeBattleSystem.resumeBattle()
+    }
+    
+    /**
+     * End active battle
+     */
+    fun endActiveBattle() {
+        activeBattleSystem.endBattle()
+        crowdAnalyzer.stopAnalyzing()
+        frequencyWarfare.stopWarfare()
+    }
+    
+    /**
+     * Set active battle mode
+     */
+    fun setActiveBattleMode(mode: ActiveBattleMode) {
+        activeBattleSystem.setBattleMode(mode)
+    }
+    
+    /**
+     * Toggle auto-counter EQ
+     */
+    fun toggleAutoCounter(enabled: Boolean) {
+        activeBattleSystem.toggleAutoCounter(enabled)
+    }
+    
+    /**
+     * Toggle auto-volume matching
+     */
+    fun toggleAutoVolume(enabled: Boolean) {
+        activeBattleSystem.toggleAutoVolume(enabled)
+    }
+    
+    /**
+     * Toggle auto-queue AI
+     */
+    fun toggleAutoQueue(enabled: Boolean) {
+        activeBattleSystem.toggleAutoQueue(enabled)
+    }
+    
+    /**
+     * Execute battle script
+     */
+    fun executeBattleScript(script: BattleScript) {
+        activeBattleSystem.executeBattleScript(script)
+    }
+    
+    /**
+     * Play AI-suggested next song
+     */
+    fun playNextSuggestion() {
+        nextSongSuggestion.value?.let { song ->
+            playSong(song)
+        }
+    }
+    
+    // ==================== CROWD ANALYZER ====================
+    
+    /**
+     * Start crowd analysis
+     */
+    fun startCrowdAnalysis() {
+        crowdAnalyzer.startAnalyzing()
+    }
+    
+    /**
+     * Stop crowd analysis
+     */
+    fun stopCrowdAnalysis() {
+        crowdAnalyzer.stopAnalyzing()
+    }
+    
+    // ==================== FREQUENCY WARFARE ====================
+    
+    /**
+     * Execute frequency warfare tactic
+     */
+    fun executeTactic(tactic: WarfareTactic) {
+        val analysis = FrequencyAnalysis() // Get current analysis
+        when (tactic) {
+            WarfareTactic.MASKING -> frequencyWarfare.executeMasking(analysis)
+            WarfareTactic.AVOIDANCE -> frequencyWarfare.executeAvoidance(analysis)
+            WarfareTactic.FLANKING -> frequencyWarfare.executeFlanking(analysis)
+            WarfareTactic.SATURATION -> frequencyWarfare.executeSaturation()
+            WarfareTactic.SURGICAL_STRIKE -> frequencyWarfare.executeSurgicalStrike(analysis.dominantBand)
+            WarfareTactic.FREQUENCY_LOCK -> frequencyWarfare.executeFrequencyLock(analysis)
+            WarfareTactic.ADAPTIVE -> frequencyWarfare.executeMasking(analysis) // Adaptive uses masking as base
+        }
+    }
+    
+    /**
+     * Stop all warfare tactics
+     */
+    fun stopWarfare() {
+        frequencyWarfare.stopWarfare()
+    }
+    
+    // ==================== FOLDER BROWSING ====================
+    
+    fun openFolder(path: String) {
+        _currentFolderPath.value = path
+        updateFolderContents(path)
+        _breadcrumbs.value = folderRepository.getBreadcrumbs(path)
+    }
+    
+    fun navigateUp() {
+        val currentPath = _currentFolderPath.value
+        if (currentPath.isNotEmpty()) {
+            val parentPath = currentPath.substringBeforeLast("/", "")
+            openFolder(parentPath)
+        }
+    }
+    
+    fun navigateToPath(path: String) {
+        openFolder(path)
+    }
+    
+    private fun updateFolderContents(path: String) {
+        _browseItems.value = if (path.isEmpty()) {
+            // Root level - show top folders
+            folderRepository.getRootFolders().map { BrowseItem.Folder(it) }
+        } else {
+            folderRepository.getFolderContents(path)
+        }
+    }
+    
+    fun playSongFromFolder(song: Song) {
+        // Get all songs in current folder and subfolders for queue
+        val songsInFolder = folderRepository.getAllSongsInFolder(_currentFolderPath.value)
+        musicController.playSong(song, songsInFolder.ifEmpty { listOf(song) })
+    }
+    
+    fun playAllInFolder() {
+        val songsInFolder = folderRepository.getAllSongsInFolder(_currentFolderPath.value)
+        if (songsInFolder.isNotEmpty()) {
+            musicController.playSong(songsInFolder.first(), songsInFolder)
+        }
+    }
+    
+    // ==================== VOICE SEARCH ====================
+    
+    private fun observeVoiceSearch() {
+        viewModelScope.launch {
+            voiceSearchManager.state.collectLatest { state ->
+                when (state) {
+                    is VoiceSearchState.Result -> {
+                        // Search songs based on recognized text using smart search
+                        val results = smartSearchEngine.searchSongs(
+                            folderRepository.getAllSongs(), 
+                            state.text
+                        ).map { it.song }
+                        _voiceSearchResults.value = results
+                    }
+                    else -> { }
+                }
+            }
+        }
+    }
+    
+    private fun observeExtremeVoiceCapture() {
+        viewModelScope.launch {
+            extremeVoiceCapture.state.collectLatest { state ->
+                when (state) {
+                    is ExtremeCaptureState.Result -> {
+                        // Search with smart search including Bengali support
+                        val results = smartSearchEngine.searchSongs(
+                            folderRepository.getAllSongs(),
+                            state.text
+                        ).map { it.song }
+                        _voiceSearchResults.value = results
+                    }
+                    else -> { }
+                }
+            }
+        }
+    }
+    
+    private fun observeQuality() {
+        viewModelScope.launch {
+            audioQualityManager.qualityState.collectLatest { qualityState ->
+                _uiState.value = _uiState.value.copy(
+                    qualityWarning = qualityState.qualityWarning,
+                    qualityPercent = qualityState.estimatedQualityPercent,
+                    formantPreservation = qualityState.formantPreservation
+                )
+            }
+        }
+    }
+    
+    private fun checkVoiceCapabilities() {
+        _voiceCapabilities.value = voiceSearchManager.getCapabilitiesInfo()
+    }
+    
+    fun startVoiceSearch() {
+        _voiceSearchResults.value = emptyList()
+        voiceSearchManager.startListening()
+    }
+    
+    fun stopVoiceSearch() {
+        voiceSearchManager.stopListening()
+    }
+    
+    fun cancelVoiceSearch() {
+        voiceSearchManager.cancel()
+        _voiceSearchResults.value = emptyList()
+    }
+    
+    fun resetVoiceSearch() {
+        voiceSearchManager.resetState()
+        _voiceSearchResults.value = emptyList()
+    }
+    
+    // ==================== EXTREME NOISE VOICE CAPTURE ====================
+    
+    /**
+     * Start extreme noise voice capture with Bengali + English support
+     * This is for VERY LOUD environments like music competitions
+     */
+    fun startExtremeVoiceCapture() {
+        _voiceSearchResults.value = emptyList()
+        // Support Bengali, English, and Hindi
+        extremeVoiceCapture.startCapture(listOf("bn-IN", "en-IN", "hi-IN"))
+    }
+    
+    fun cancelExtremeVoiceCapture() {
+        extremeVoiceCapture.cancel()
+        _voiceSearchResults.value = emptyList()
+    }
+    
+    fun resetExtremeVoiceCapture() {
+        extremeVoiceCapture.reset()
+        _voiceSearchResults.value = emptyList()
+    }
+    
+    fun getVoiceTips(): List<String> {
+        return extremeVoiceCapture.getTipsForNoiseLevel()
+    }
+    
+    // ==================== AUDIO QUALITY ====================
+    
+    fun setQualityMode(mode: com.ultramusic.player.audio.QualityMode) {
+        audioQualityManager.setQualityMode(mode)
+    }
+    
+    fun setFormantPreservation(enabled: Boolean) {
+        audioQualityManager.setFormantPreservation(enabled)
+    }
+    
+    fun getQualityRecommendations(): List<String> {
+        val state = playbackState.value
+        return audioQualityManager.getRecommendedSettings(state.speed, state.pitch)
+    }
+    
+    // ==================== SONG METADATA ====================
+    
+    fun normalizeSongTitles() {
+        viewModelScope.launch {
+            songMetadataManager.normalizeAll(_uiState.value.songs)
+        }
+    }
+    
+    // ==================== SMART PLAYLIST ====================
+    
+    /**
+     * Start adding mode - shows the search overlay
+     */
+    fun startPlaylistAddingMode() {
+        smartPlaylistManager.startAddingMode()
+    }
+    
+    /**
+     * End adding mode - closes the search overlay
+     */
+    fun endPlaylistAddingMode() {
+        smartPlaylistManager.endAddingMode()
+    }
+
+    /**
+     * Toggle adding mode - switches between search mode and normal playlist view
+     */
+    fun togglePlaylistAddingMode() {
+        if (isPlaylistAddingMode.value) {
+            smartPlaylistManager.endAddingMode()
+        } else {
+            smartPlaylistManager.startAddingMode()
+        }
+    }
+
+    /**
+     * Update search query with real-time narrowing results
+     */
+    fun updatePlaylistSearchQuery(query: String) {
+        smartPlaylistManager.updateSearchQuery(query)
+    }
+    
+    /**
+     * Add song from search result to playlist
+     * @param song The song to add
+     * @param playNext If true, adds to play next; if false, adds to end
+     */
+    fun addToPlaylistFromSearch(song: Song, playNext: Boolean = false) {
+        smartPlaylistManager.addFromSearch(song, playNext)
+    }
+    
+    /**
+     * Add song from voice input
+     * Uses fuzzy matching to find best match
+     */
+    fun addToPlaylistFromVoice(recognizedText: String) {
+        val result = smartPlaylistManager.addFromVoice(recognizedText)
+        _lastAddResult.value = result
+    }
+    
+    /**
+     * Quick add by typing partial name - adds best match instantly
+     */
+    fun quickAddToPlaylist(partialName: String) {
+        val result = smartPlaylistManager.quickAdd(partialName)
+        _lastAddResult.value = result
+    }
+    
+    /**
+     * Add song to play next (after current song)
+     */
+    fun addToPlayNext(song: Song) {
+        smartPlaylistManager.addToPlayNext(song)
+    }
+    
+    /**
+     * Add song to end of playlist
+     */
+    fun addToPlaylistEnd(song: Song) {
+        smartPlaylistManager.addSong(song)
+    }
+    
+    /**
+     * Add multiple songs at once
+     */
+    fun addMultipleToPlaylist(songs: List<Song>) {
+        smartPlaylistManager.addSongs(songs)
+    }
+    
+    /**
+     * Remove song from playlist by index
+     */
+    fun removeFromPlaylist(index: Int) {
+        smartPlaylistManager.removeSong(index)
+    }
+    
+    /**
+     * Remove song from playlist by ID
+     */
+    fun removeFromPlaylistById(songId: Long) {
+        smartPlaylistManager.removeSongById(songId)
+    }
+    
+    /**
+     * Move song within playlist (drag and drop)
+     */
+    fun moveInPlaylist(fromIndex: Int, toIndex: Int) {
+        smartPlaylistManager.moveSong(fromIndex, toIndex)
+    }
+    
+    /**
+     * Play from specific index in playlist
+     */
+    fun playFromPlaylistIndex(index: Int) {
+        smartPlaylistManager.setCurrentIndex(index)
+        smartPlaylistManager.activePlaylist.value.queue.getOrNull(index)?.let { song ->
+            musicController.playSong(song, smartPlaylistManager.activePlaylist.value.queue)
+        }
+    }
+    
+    /**
+     * Clear entire playlist
+     */
+    fun clearPlaylist() {
+        smartPlaylistManager.clearPlaylist()
+    }
+    
+    /**
+     * Shuffle remaining songs in playlist
+     */
+    fun shufflePlaylistRemaining() {
+        smartPlaylistManager.shuffleRemaining()
+    }
+    
+    /**
+     * Toggle loop mode for playlist
+     */
+    fun togglePlaylistLoop() {
+        smartPlaylistManager.toggleLoop()
+    }
+    
+    /**
+     * Move to next song in playlist
+     */
+    fun playlistNext(): Song? {
+        val nextSong = smartPlaylistManager.moveToNext()
+        nextSong?.let { song ->
+            musicController.playSong(song, smartPlaylistManager.activePlaylist.value.queue)
+        }
+        return nextSong
+    }
+    
+    /**
+     * Move to previous song in playlist
+     */
+    fun playlistPrevious(): Song? {
+        val prevSong = smartPlaylistManager.moveToPrevious()
+        prevSong?.let { song ->
+            musicController.playSong(song, smartPlaylistManager.activePlaylist.value.queue)
+        }
+        return prevSong
+    }
+    
+    /**
+     * Get upcoming songs in playlist
+     */
+    fun getPlaylistUpcoming(count: Int = 5): List<Song> {
+        return smartPlaylistManager.getUpcoming(count)
+    }
+    
+    /**
+     * Get remaining song count
+     */
+    fun getPlaylistRemainingCount(): Int {
+        return smartPlaylistManager.getRemainingCount()
+    }
+    
+    /**
+     * Get total playlist duration
+     */
+    fun getPlaylistTotalDuration(): Long {
+        return smartPlaylistManager.getTotalDuration()
+    }
+    
+    /**
+     * Get remaining playlist duration
+     */
+    fun getPlaylistRemainingDuration(): Long {
+        return smartPlaylistManager.getRemainingDuration()
+    }
+    
+    /**
+     * Clear the last add result notification
+     */
+    fun clearLastAddResult() {
+        _lastAddResult.value = null
+    }
+    
+    // ==================== SEARCH & SORT ====================
+    
+    fun updateSearchQuery(query: String) {
+        _uiState.value = _uiState.value.copy(searchQuery = query)
+        
+        // Use smart search for results
+        val results = if (query.isBlank()) {
+            _uiState.value.songs
+        } else {
+            smartSearchEngine.searchSongs(_uiState.value.songs, query)
+                .map { it.song }
+        }
+        
+        _uiState.value = _uiState.value.copy(filteredSongs = results)
+        
+        // Update suggestions
+        _searchSuggestions.value = smartSearchEngine.getSuggestions(
+            _uiState.value.songs, 
+            query
+        )
+    }
+    
+    fun clearSearch() {
+        updateSearchQuery("")
+        _searchSuggestions.value = emptyList()
+    }
+    
+    private fun applySearch(songs: List<Song>, query: String): List<Song> {
+        return if (query.isBlank()) songs
+        else smartSearchEngine.searchSongs(songs, query).map { it.song }
+    }
+    
+    fun setSortOption(option: SortOption) {
+        val sorted = musicRepository.sortSongs(_uiState.value.songs, option)
+        _uiState.value = _uiState.value.copy(
+            sortOption = option,
+            songs = sorted,
+            filteredSongs = applySearch(sorted, _uiState.value.searchQuery)
+        )
+    }
+
+    // ==================== BROWSE TABS ====================
+
+    fun setBrowseTab(tab: BrowseTab) {
+        _uiState.value = _uiState.value.copy(selectedBrowseTab = tab)
+        // Exit selection mode when switching tabs
+        if (_uiState.value.isSelectionMode) {
+            exitSelectionMode()
+        }
+    }
+
+    private fun updateArtistsAndAlbums() {
+        val songs = _uiState.value.songs
+        // Group by artist with song count
+        val artists = songs.groupBy { it.artist }
+            .map { (artist, artistSongs) -> Pair(artist, artistSongs.size) }
+            .sortedBy { it.first.lowercase() }
+
+        // Group by album with artist and song count
+        val albums = songs.groupBy { it.album }
+            .map { (album, albumSongs) ->
+                val primaryArtist = albumSongs.firstOrNull()?.artist ?: "Unknown Artist"
+                Triple(album, primaryArtist, albumSongs.size)
+            }
+            .sortedBy { it.first.lowercase() }
+
+        _uiState.value = _uiState.value.copy(
+            artistsList = artists,
+            albumsList = albums
+        )
+    }
+
+    fun getSongsByArtist(artist: String): List<Song> {
+        return _uiState.value.songs.filter { it.artist == artist }
+    }
+
+    fun getSongsByAlbum(album: String): List<Song> {
+        return _uiState.value.songs.filter { it.album == album }
+    }
+
+    fun playArtist(artist: String) {
+        val artistSongs = getSongsByArtist(artist)
+        if (artistSongs.isNotEmpty()) {
+            musicController.playSong(artistSongs.first(), artistSongs)
+        }
+    }
+
+    fun playAlbum(album: String) {
+        val albumSongs = getSongsByAlbum(album)
+        if (albumSongs.isNotEmpty()) {
+            musicController.playSong(albumSongs.first(), albumSongs)
+        }
+    }
+
+    // ==================== SELECTION MODE ====================
+
+    fun enterSelectionMode(songId: Long) {
+        _uiState.value = _uiState.value.copy(
+            isSelectionMode = true,
+            selectedSongIds = setOf(songId)
+        )
+    }
+
+    fun exitSelectionMode() {
+        _uiState.value = _uiState.value.copy(
+            isSelectionMode = false,
+            selectedSongIds = emptySet()
+        )
+    }
+
+    fun toggleSongSelection(songId: Long) {
+        val currentSelected = _uiState.value.selectedSongIds
+        val newSelected = if (songId in currentSelected) {
+            currentSelected - songId
+        } else {
+            currentSelected + songId
+        }
+        _uiState.value = _uiState.value.copy(selectedSongIds = newSelected)
+        // Exit selection mode if nothing selected
+        if (newSelected.isEmpty()) {
+            exitSelectionMode()
+        }
+    }
+
+    fun selectAllSongs() {
+        val allIds = _uiState.value.filteredSongs.map { it.id }.toSet()
+        _uiState.value = _uiState.value.copy(selectedSongIds = allIds)
+    }
+
+    fun deselectAllSongs() {
+        _uiState.value = _uiState.value.copy(selectedSongIds = emptySet())
+    }
+
+    fun addSelectedToPlaylist() {
+        val selectedSongs = _uiState.value.filteredSongs.filter { it.id in _uiState.value.selectedSongIds }
+        selectedSongs.forEach { song ->
+            smartPlaylistManager.addSong(song)
+        }
+        exitSelectionMode()
+    }
+
+    fun playSelectedSongs() {
+        val selectedSongs = _uiState.value.filteredSongs.filter { it.id in _uiState.value.selectedSongIds }
+        if (selectedSongs.isNotEmpty()) {
+            musicController.playSong(selectedSongs.first(), selectedSongs)
+        }
+        exitSelectionMode()
+    }
+
+    // ==================== PLAYBACK CONTROLS ====================
+    
+    fun playSong(song: Song) {
+        musicController.playSong(song, _uiState.value.filteredSongs)
+    }
+    
+    /**
+     * Play a counter clip with automatic A-B loop
+     */
+    fun playClip(clip: com.ultramusic.player.core.CounterClip) {
+        // Find the song in library
+        val song = _uiState.value.songs.find { it.id == clip.songId }
+        if (song != null) {
+            // Play the song
+            musicController.playSong(song, listOf(song))
+            
+            // Seek to clip start
+            viewModelScope.launch {
+                kotlinx.coroutines.delay(100) // Wait for playback to start
+                musicController.seekTo(clip.startMs)
+                
+                // Set A-B loop points
+                musicController.setLoopPoints(clip.startMs, clip.endMs)
+                
+                // Record usage
+                battleArmory.recordClipUsage(clip.id, won = false) // Default false, update later
+            }
+        }
+    }
+    
+    fun togglePlayPause() {
+        musicController.togglePlayPause()
+    }
+    
+    fun playNext() {
+        musicController.playNext()
+    }
+    
+    fun playPrevious() {
+        musicController.playPrevious()
+    }
+    
+    fun seekTo(position: Long) {
+        musicController.seekTo(position)
+    }
+    
+    fun seekToPercent(percent: Float) {
+        musicController.seekToPercent(percent)
+    }
+    
+    fun toggleLoop() {
+        musicController.toggleLoop()
+    }
+    
+    fun toggleShuffle() {
+        musicController.toggleShuffle()
+    }
+    
+    // ==================== SPEED CONTROL ====================
+    
+    fun setSpeed(speed: Float) {
+        musicController.setSpeed(speed)
+        _uiState.value = _uiState.value.copy(selectedPreset = null)
+    }
+    
+    fun adjustSpeed(delta: Float) {
+        musicController.adjustSpeed(delta)
+        _uiState.value = _uiState.value.copy(selectedPreset = null)
+    }
+    
+    fun resetSpeed() {
+        musicController.resetSpeed()
+    }
+    
+    // ==================== PITCH CONTROL ====================
+    
+    fun setPitch(semitones: Float) {
+        musicController.setPitch(semitones)
+        _uiState.value = _uiState.value.copy(selectedPreset = null)
+    }
+    
+    fun adjustPitch(delta: Float) {
+        musicController.adjustPitch(delta)
+        _uiState.value = _uiState.value.copy(selectedPreset = null)
+    }
+    
+    fun resetPitch() {
+        musicController.resetPitch()
+    }
+    
+    // ==================== PRESETS ====================
+    
+    fun applyPreset(preset: AudioPreset) {
+        musicController.applyPreset(preset)
+        _uiState.value = _uiState.value.copy(selectedPreset = preset)
+    }
+    
+    fun resetAll() {
+        musicController.resetAll()
+        _uiState.value = _uiState.value.copy(selectedPreset = null)
+    }
+    
+    // ==================== A-B LOOP ====================
+    
+    fun setABLoopStart() {
+        musicController.setABLoopStart()
+    }
+    
+    fun setABLoopEnd() {
+        musicController.setABLoopEnd()
+    }
+    
+    fun clearABLoop() {
+        musicController.clearABLoop()
+    }
+
+    /**
+     * Set A-B loop points manually with specific timestamps
+     */
+    fun setManualLoopPoints(startMs: Long, endMs: Long) {
+        musicController.setLoopPoints(startMs, endMs)
+    }
+
+    /**
+     * Save current A-B loop as a counter clip to Battle Armory
+     */
+    fun saveClipToArmory(
+        song: com.ultramusic.player.data.Song,
+        startMs: Long,
+        endMs: Long,
+        name: String? = null,
+        purpose: com.ultramusic.player.core.ClipPurpose = com.ultramusic.player.core.ClipPurpose.ALL_ROUNDER
+    ) {
+        val clipName = name ?: "${song.title} (${formatTime(startMs)}-${formatTime(endMs)})"
+        battleArmory.createCounterClip(
+            song = song,
+            startMs = startMs,
+            endMs = endMs,
+            name = clipName,
+            purpose = purpose,
+            notes = "Created from Now Playing"
+        )
+    }
+    
+    private fun formatTime(ms: Long): String {
+        val seconds = ms / 1000
+        val mins = seconds / 60
+        val secs = seconds % 60
+        return "$mins:${secs.toString().padStart(2, '0')}"
+    }
+    
+    // ==================== AUTO CLIP DETECTION ====================
+    
+    /**
+     * Auto-detect best A-B clips in current song
+     */
+    fun autoDetectClips() {
+        val currentSong = playbackState.value.currentSong ?: return
+        
+        viewModelScope.launch {
+            _isDetectingClips.value = true
+            _detectedClips.value = emptyList()
+            
+            try {
+                val clips = autoClipDetector.detectClips(currentSong)
+                _detectedClips.value = clips
+            } catch (e: Exception) {
+                // Handle error silently
+            } finally {
+                _isDetectingClips.value = false
+            }
+        }
+    }
+    
+    /**
+     * Auto-detect clips for a specific song
+     */
+    fun autoDetectClipsForSong(song: Song) {
+        viewModelScope.launch {
+            _isDetectingClips.value = true
+            _detectedClips.value = emptyList()
+            
+            try {
+                val clips = autoClipDetector.detectClips(song)
+                _detectedClips.value = clips
+            } catch (e: Exception) {
+                // Handle error silently
+            } finally {
+                _isDetectingClips.value = false
+            }
+        }
+    }
+    
+    /**
+     * Set A-B loop from a detected clip
+     */
+    fun setABFromDetectedClip(clip: com.ultramusic.player.core.DetectedClip) {
+        musicController.setLoopPoints(clip.startMs, clip.endMs)
+        musicController.seekTo(clip.startMs)
+    }
+    
+    /**
+     * Save detected clip directly to armory
+     */
+    fun saveDetectedClipToArmory(clip: com.ultramusic.player.core.DetectedClip) {
+        val song = _uiState.value.songs.find { it.id == clip.songId } ?: return
+        battleArmory.createCounterClip(
+            song = song,
+            startMs = clip.startMs,
+            endMs = clip.endMs,
+            name = clip.suggestedName,
+            purpose = clip.purpose,
+            notes = clip.reason
+        )
+    }
+    
+    /**
+     * Auto-detect and save all clips from current song to armory
+     */
+    fun autoDetectAndSaveAllClips() {
+        val currentSong = playbackState.value.currentSong ?: return
+        
+        viewModelScope.launch {
+            _isDetectingClips.value = true
+            
+            try {
+                val clips = autoClipDetector.detectClips(currentSong)
+                clips.forEach { clip ->
+                    battleArmory.createCounterClip(
+                        song = currentSong,
+                        startMs = clip.startMs,
+                        endMs = clip.endMs,
+                        name = clip.suggestedName,
+                        purpose = clip.purpose,
+                        notes = clip.reason
+                    )
+                }
+                _detectedClips.value = clips
+            } catch (e: Exception) {
+                // Handle error silently
+            } finally {
+                _isDetectingClips.value = false
+            }
+        }
+    }
+    
+    /**
+     * Clear detected clips
+     */
+    fun clearDetectedClips() {
+        _detectedClips.value = emptyList()
+    }
+    
+    // Aliases for EasyPlayerScreen compatibility
+    fun setLoopStart() = setABLoopStart()
+    fun setLoopEnd() = setABLoopEnd()
+    fun clearLoop() = clearABLoop()
+
+    // ==================== WAVEFORM ====================
+
+    /**
+     * Extract waveform for current song
+     */
+    fun extractWaveformForCurrentSong() {
+        val currentSong = playbackState.value.currentSong ?: return
+        viewModelScope.launch {
+            val uri = Uri.parse(currentSong.path)
+            val waveform = waveformExtractor.extractWaveform(
+                songId = currentSong.id,
+                uri = uri,
+                numSamples = 200
+            )
+            _currentWaveform.value = waveform
+        }
+    }
+
+    /**
+     * Extract waveform for a specific song
+     */
+    fun extractWaveform(song: Song) {
+        viewModelScope.launch {
+            val uri = Uri.parse(song.path)
+            val waveform = waveformExtractor.extractWaveform(
+                songId = song.id,
+                uri = uri,
+                numSamples = 200
+            )
+            _currentWaveform.value = waveform
+        }
+    }
+
+    /**
+     * Get cached waveform if available
+     */
+    fun getCachedWaveform(songId: Long): List<Float>? {
+        return waveformExtractor.getCachedWaveform(songId)
+    }
+
+    /**
+     * Set A-B loop points from waveform
+     */
+    fun setWaveformLoopStart(positionMs: Long) {
+        _loopStartMs.value = positionMs
+        if (_loopEndMs.value != null) {
+            musicController.setLoopPoints(positionMs, _loopEndMs.value!!)
+            _isLoopEnabled.value = true
+        }
+    }
+
+    fun setWaveformLoopEnd(positionMs: Long) {
+        _loopEndMs.value = positionMs
+        if (_loopStartMs.value != null) {
+            musicController.setLoopPoints(_loopStartMs.value!!, positionMs)
+            _isLoopEnabled.value = true
+        }
+    }
+
+    fun clearWaveformLoop() {
+        _loopStartMs.value = null
+        _loopEndMs.value = null
+        _isLoopEnabled.value = false
+        musicController.clearABLoop()
+    }
+
+    /**
+     * Seek to position in waveform (0-1)
+     */
+    fun seekToWaveformPosition(position: Float) {
+        val duration = playbackState.value.duration
+        musicController.seekTo((position * duration).toLong())
+    }
+
+    // ==================== BEAT DETECTION ====================
+
+    /**
+     * Detect beats for current song
+     */
+    fun detectBeatsForCurrentSong() {
+        val currentSong = playbackState.value.currentSong ?: return
+        viewModelScope.launch {
+            val uri = Uri.parse(currentSong.path)
+            val beats = beatDetector.detectBeats(
+                songId = currentSong.id,
+                uri = uri
+            )
+            _currentBeatMarkers.value = beats
+        }
+    }
+
+    /**
+     * Detect beats for a specific song
+     */
+    fun detectBeats(song: Song) {
+        viewModelScope.launch {
+            val uri = Uri.parse(song.path)
+            val beats = beatDetector.detectBeats(
+                songId = song.id,
+                uri = uri
+            )
+            _currentBeatMarkers.value = beats
+        }
+    }
+
+    /**
+     * Get cached beats if available
+     */
+    fun getCachedBeats(songId: Long): List<BeatMarker>? {
+        return beatDetector.getCachedBeats(songId)
+    }
+
+    /**
+     * Quick BPM estimation without full beat detection
+     */
+    fun estimateBpmForSong(song: Song, onResult: (Float) -> Unit) {
+        viewModelScope.launch {
+            val uri = Uri.parse(song.path)
+            val bpm = beatDetector.estimateBpm(uri)
+            onResult(bpm)
+        }
+    }
+
+    /**
+     * Extract waveform and detect beats together for current song
+     */
+    fun analyzeCurrentSong() {
+        val currentSong = playbackState.value.currentSong ?: return
+        viewModelScope.launch {
+            val uri = Uri.parse(currentSong.path)
+
+            // Extract waveform
+            val waveform = waveformExtractor.extractWaveform(
+                songId = currentSong.id,
+                uri = uri,
+                numSamples = 200
+            )
+            _currentWaveform.value = waveform
+
+            // Detect beats
+            val beats = beatDetector.detectBeats(
+                songId = currentSong.id,
+                uri = uri
+            )
+            _currentBeatMarkers.value = beats
+        }
+    }
+
+    // ==================== ENHANCED FOLDER BROWSER ====================
+
+    /**
+     * Set folder view mode (hierarchical or linear)
+     */
+    fun setFolderViewMode(mode: FolderViewMode) {
+        _folderViewMode.value = mode
+    }
+
+    /**
+     * Toggle folder view mode
+     */
+    fun toggleFolderViewMode() {
+        _folderViewMode.value = when (_folderViewMode.value) {
+            FolderViewMode.HIERARCHICAL -> FolderViewMode.LINEAR
+            FolderViewMode.LINEAR -> FolderViewMode.HIERARCHICAL
+        }
+    }
+
+    /**
+     * Load enhanced folder structure
+     */
+    fun loadEnhancedFolders() {
+        viewModelScope.launch {
+            val songs = _uiState.value.songs
+            val folderMap = songs.groupBy { song ->
+                song.path.substringBeforeLast("/")
+            }
+
+            val folderItems = folderMap.map { (path, songsInFolder) ->
+                val name = path.substringAfterLast("/").ifEmpty { "Root" }
+                val parentPath = path.substringBeforeLast("/", "").ifEmpty { null }
+                FolderItem(
+                    path = path,
+                    name = name,
+                    songCount = songsInFolder.size,
+                    parentPath = parentPath
+                )
+            }.sortedBy { it.name.lowercase() }
+
+            // Build hierarchical structure
+            val hierarchicalFolders = buildHierarchicalFolders(folderItems)
+            _enhancedFolders.value = hierarchicalFolders
+        }
+    }
+
+    /**
+     * Build hierarchical folder structure from flat list
+     */
+    private fun buildHierarchicalFolders(folders: List<FolderItem>): List<FolderItem> {
+        // Group folders by parent path
+        val foldersByParent = folders.groupBy { it.parentPath }
+
+        // Find root folders (no parent or parent not in our list)
+        val allPaths = folders.map { it.path }.toSet()
+        val rootFolders = folders.filter { folder ->
+            folder.parentPath == null || folder.parentPath !in allPaths
+        }
+
+        // Recursively attach subfolders
+        fun attachSubfolders(folder: FolderItem): FolderItem {
+            val subfolders = foldersByParent[folder.path]?.map { attachSubfolders(it) } ?: emptyList()
+            return folder.copy(subFolders = subfolders)
+        }
+
+        return rootFolders.map { attachSubfolders(it) }
+    }
+
+    /**
+     * Add folder to shortcuts
+     */
+    fun addFolderShortcut(folder: FolderItem) {
+        val current = _folderShortcuts.value.toMutableList()
+        if (current.none { it.path == folder.path }) {
+            current.add(folder.copy(isShortcut = true))
+            _folderShortcuts.value = current
+        }
+    }
+
+    /**
+     * Remove folder from shortcuts
+     */
+    fun removeFolderShortcut(folder: FolderItem) {
+        _folderShortcuts.value = _folderShortcuts.value.filter { it.path != folder.path }
+    }
+
+    /**
+     * Toggle folder shortcut
+     */
+    fun toggleFolderShortcut(folder: FolderItem) {
+        if (_folderShortcuts.value.any { it.path == folder.path }) {
+            removeFolderShortcut(folder)
+        } else {
+            addFolderShortcut(folder)
+        }
+    }
+
+    /**
+     * Play all songs in a folder
+     */
+    fun playEnhancedFolder(folder: FolderItem) {
+        val songs = _uiState.value.songs.filter { song ->
+            song.path.startsWith(folder.path)
+        }
+        if (songs.isNotEmpty()) {
+            musicController.playSong(songs.first(), songs)
+        }
+    }
+
+    /**
+     * Navigate to folder and show its songs
+     */
+    fun openEnhancedFolder(folder: FolderItem) {
+        _currentFolderPath.value = folder.path
+        updateFolderContents(folder.path)
+        _breadcrumbs.value = folderRepository.getBreadcrumbs(folder.path)
+    }
+
+    // Toggle repeat mode (0=off, 1=all, 2=one)
+    fun toggleRepeat() {
+        musicController.toggleRepeatMode()
+    }
+    
+    // ==================== UI PANELS ====================
+    
+    fun toggleSpeedPitchPanel() {
+        _uiState.value = _uiState.value.copy(
+            showSpeedPitchPanel = !_uiState.value.showSpeedPitchPanel,
+            showPresetPanel = false,
+            showABLoopPanel = false
+        )
+    }
+    
+    fun togglePresetPanel() {
+        _uiState.value = _uiState.value.copy(
+            showPresetPanel = !_uiState.value.showPresetPanel,
+            showSpeedPitchPanel = false,
+            showABLoopPanel = false
+        )
+    }
+    
+    fun toggleABLoopPanel() {
+        _uiState.value = _uiState.value.copy(
+            showABLoopPanel = !_uiState.value.showABLoopPanel,
+            showSpeedPitchPanel = false,
+            showPresetPanel = false
+        )
+    }
+    
+    fun closePanels() {
+        _uiState.value = _uiState.value.copy(
+            showSpeedPitchPanel = false,
+            showPresetPanel = false,
+            showABLoopPanel = false
+        )
+    }
+    
+    fun clearError() {
+        _uiState.value = _uiState.value.copy(errorMessage = null)
+    }
+    
+    override fun onCleared() {
+        super.onCleared()
+        musicController.release()
+        voiceSearchManager.release()
+        extremeVoiceCapture.release()
+        audioQualityManager.release()
+    }
+}
