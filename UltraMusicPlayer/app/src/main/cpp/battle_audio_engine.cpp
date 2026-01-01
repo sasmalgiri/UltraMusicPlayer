@@ -193,14 +193,35 @@ public:
         delete bassBoost;
     }
 
-    // Set audio engine at runtime
+    // Set audio engine at runtime with smart fallback
     void setAudioEngine(AudioEngineType engine) {
         if (engine == currentEngine) return;
 
-        // Check if Rubberband is available
+        // Smart fallback chain: Requested → Next Best → SoundTouch (always available)
+        AudioEngineType requestedEngine = engine;
+
+        // Check Superpowered availability - fallback to Rubberband, then SoundTouch
+        if (engine == AudioEngineType::SUPERPOWERED && !superpoweredAvailable) {
+            LOGW("Superpowered not available (no license or limit reached)");
+            if (rubberbandAvailable) {
+                LOGI("Falling back to Rubberband (10/10 quality)");
+                engine = AudioEngineType::RUBBERBAND;
+            } else {
+                LOGI("Falling back to SoundTouch (8.5/10 quality)");
+                engine = AudioEngineType::SOUNDTOUCH;
+            }
+        }
+
+        // Check Rubberband availability - fallback to Superpowered, then SoundTouch
         if (engine == AudioEngineType::RUBBERBAND && !rubberbandAvailable) {
-            LOGW("Rubberband not available! Falling back to Superpowered.");
-            engine = AudioEngineType::SUPERPOWERED;
+            LOGW("Rubberband not available");
+            if (superpoweredAvailable) {
+                LOGI("Falling back to Superpowered (9.5/10 quality)");
+                engine = AudioEngineType::SUPERPOWERED;
+            } else {
+                LOGI("Falling back to SoundTouch (8.5/10 quality)");
+                engine = AudioEngineType::SOUNDTOUCH;
+            }
         }
 
         AudioEngineType previousEngine = currentEngine;
@@ -211,24 +232,33 @@ public:
 
         switch (engine) {
             case AudioEngineType::SOUNDTOUCH:
-                LOGI("Engine switched to: SOUNDTOUCH (8.5/10 quality, balanced)");
+                LOGI("Engine: SOUNDTOUCH (8.5/10 quality) - Always available, no license needed");
                 break;
             case AudioEngineType::SUPERPOWERED:
-                LOGI("Engine switched to: SUPERPOWERED (9.5/10 quality, DJ-grade)");
+                LOGI("Engine: SUPERPOWERED (9.5/10 quality) - DJ-grade processing");
                 break;
             case AudioEngineType::RUBBERBAND:
 #if USE_RUBBERBAND
                 // Update Rubberband parameters
                 if (rubberbandStretcher) {
-                    rubberbandStretcher->setTimeRatio(1.0 / speed);  // Rubberband uses time ratio (inverse of speed)
+                    rubberbandStretcher->setTimeRatio(1.0 / speed);
                     rubberbandStretcher->setPitchScale(std::pow(2.0, pitchSemitones / 12.0));
                 }
-                LOGI("Engine switched to: RUBBERBAND (10/10 quality, studio-grade)");
+                LOGI("Engine: RUBBERBAND (10/10 quality) - Studio-grade, best for music");
 #else
                 LOGW("Rubberband not compiled! Using SoundTouch.");
                 currentEngine = AudioEngineType::SOUNDTOUCH;
 #endif
                 break;
+        }
+
+        // Log if we had to fallback
+        if (engine != requestedEngine) {
+            LOGI("Note: Requested %s but using %s (fallback)",
+                 requestedEngine == AudioEngineType::SOUNDTOUCH ? "SoundTouch" :
+                 requestedEngine == AudioEngineType::SUPERPOWERED ? "Superpowered" : "Rubberband",
+                 engine == AudioEngineType::SOUNDTOUCH ? "SoundTouch" :
+                 engine == AudioEngineType::SUPERPOWERED ? "Superpowered" : "Rubberband");
         }
     }
 
