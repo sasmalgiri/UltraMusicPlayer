@@ -1,0 +1,24 @@
+{
+    "configurations": [
+        {
+            "name": "Android",
+            "includePath": [
+                "${workspaceFolder}/app/src/main/cpp/**",
+                "C:/Users/USER/AppData/Local/Android/Sdk/ndk/25.1.8937393/toolchains/llvm/prebuilt/windows-x86_64/sysroot/usr/include",
+                "C:/Users/USER/AppData/Local/Android/Sdk/ndk/25.1.8937393/toolchains/llvm/prebuilt/windows-x86_64/sysroot/usr/include/aarch64-linux-android",
+                "C:/Users/USER/AppData/Local/Android/Sdk/ndk/25.1.8937393/sources/android/native_app_glue"
+            ],
+            "defines": [
+                "ANDROID",
+                "__ANDROID__",
+                "__ANDROID_API__=26",
+                "USE_RUBBERBAND=1"
+            ],
+            "compilerPath": "C:/Users/USER/AppData/Local/Android/Sdk/ndk/25.1.8937393/toolchains/llvm/prebuilt/windows-x86_64/bin/clang++.exe",
+            "cStandard": "c17",
+            "cppStandard": "c++17",
+            "intelliSenseMode": "clang-x64"
+        }
+    ],
+    "version": 4
+}
