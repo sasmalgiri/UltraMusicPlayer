@@ -25,7 +25,10 @@
 // ENGINE CONFIGURATION
 // All engines now available at RUNTIME - user can switch between them
 // =============================================================================
-#define SUPERPOWERED_LICENSE ""  // Add your license key here (FREE for <$100K revenue)
+// Get your FREE license at: https://superpowered.com/dev (for apps earning <$100K/year)
+// Without license, app uses SoundTouch only (still very good quality)
+#define SUPERPOWERED_LICENSE ""
+#define HAS_SUPERPOWERED_LICENSE (strlen(SUPERPOWERED_LICENSE) > 10)
 // =============================================================================
 
 #include "battle_audio_engine.h"
@@ -74,44 +77,54 @@ inline int semitonesToCents(float semitones) {
 class BattleAudioEngineImpl {
 public:
     BattleAudioEngineImpl() {
-        // Initialize Superpowered SDK (FREE for apps earning <$100K/year)
-        Superpowered::Initialize(SUPERPOWERED_LICENSE);
-        superpoweredAvailable = true;
+        // Initialize Superpowered SDK only if license is available
+        if (HAS_SUPERPOWERED_LICENSE) {
+            Superpowered::Initialize(SUPERPOWERED_LICENSE);
+            superpoweredAvailable = true;
 
-        // Create Superpowered time stretcher (highest quality mode)
-        timeStretcher = new Superpowered::TimeStretching(44100, 0.01f);
-        timeStretcher->sound = 2;  // Highest quality mode
-        timeStretcher->formantCorrection = 0.5f;
-        timeStretcher->rate = 1.0f;
-        timeStretcher->pitchShiftCents = 0;
+            // Create Superpowered time stretcher (highest quality mode)
+            timeStretcher = new Superpowered::TimeStretching(44100, 0.01f);
+            timeStretcher->sound = 2;  // Highest quality mode
+            timeStretcher->formantCorrection = 0.5f;
+            timeStretcher->rate = 1.0f;
+            timeStretcher->pitchShiftCents = 0;
 
-        // Create Superpowered effects for full utilization
-        spCompressor = new Superpowered::Compressor(44100);
-        spCompressor->enabled = true;
-        spCompressor->inputGainDb = 0;
-        spCompressor->outputGainDb = 0;
-        spCompressor->wet = 1.0f;
-        spCompressor->attackSec = 0.003f;
-        spCompressor->releaseSec = 0.3f;
-        spCompressor->ratio = 4.0f;
-        spCompressor->thresholdDb = -10.0f;
-        spCompressor->hpCutOffHz = 1;
+            // Create Superpowered effects for full utilization
+            spCompressor = new Superpowered::Compressor(44100);
+            spCompressor->enabled = true;
+            spCompressor->inputGainDb = 0;
+            spCompressor->outputGainDb = 0;
+            spCompressor->wet = 1.0f;
+            spCompressor->attackSec = 0.003f;
+            spCompressor->releaseSec = 0.3f;
+            spCompressor->ratio = 4.0f;
+            spCompressor->thresholdDb = -10.0f;
+            spCompressor->hpCutOffHz = 1;
 
-        spLimiter = new Superpowered::Limiter(44100);
-        spLimiter->enabled = true;
-        spLimiter->ceilingDb = -0.1f;
-        spLimiter->thresholdDb = -0.3f;
-        spLimiter->releaseSec = 0.1f;
+            spLimiter = new Superpowered::Limiter(44100);
+            spLimiter->enabled = true;
+            spLimiter->ceilingDb = -0.1f;
+            spLimiter->thresholdDb = -0.3f;
+            spLimiter->releaseSec = 0.1f;
 
-        spEQ = new Superpowered::ThreeBandEQ(44100);
-        spEQ->enabled = true;
-        spEQ->low = 1.0f;  // Will be adjusted by bass boost
-        spEQ->mid = 1.0f;
-        spEQ->high = 1.0f;
+            spEQ = new Superpowered::ThreeBandEQ(44100);
+            spEQ->enabled = true;
+            spEQ->low = 1.0f;  // Will be adjusted by bass boost
+            spEQ->mid = 1.0f;
+            spEQ->high = 1.0f;
 
-        LOGI("Superpowered SDK initialized - DJ-grade effects ready!");
+            LOGI("Superpowered SDK initialized - DJ-grade effects ready!");
+        } else {
+            // No Superpowered license - use SoundTouch only
+            superpoweredAvailable = false;
+            timeStretcher = nullptr;
+            spCompressor = nullptr;
+            spLimiter = nullptr;
+            spEQ = nullptr;
+            LOGI("No Superpowered license - using SoundTouch engine (still excellent quality!)");
+        }
 
-        // SoundTouch - OPTIMIZED SETTINGS for maximum quality
+        // SoundTouch - OPTIMIZED SETTINGS for maximum quality (always available)
         soundTouch = new soundtouch::SoundTouch();
         soundTouch->setSetting(SETTING_USE_AA_FILTER, 1);        // Anti-alias filtering ON
         soundTouch->setSetting(SETTING_AA_FILTER_LENGTH, 128);   // Longest filter for best quality
@@ -145,11 +158,19 @@ public:
 #endif
 
         LOGI("BattleAudioEngine v3.0 - MULTI-ENGINE READY!");
+        if (superpoweredAvailable) {
 #if USE_RUBBERBAND
-        LOGI("Available Engines: SoundTouch (8.5/10) | Superpowered (9.5/10) | Rubberband (10/10)");
+            LOGI("Available Engines: SoundTouch (8.5/10) | Superpowered (9.5/10) | Rubberband (10/10)");
 #else
-        LOGI("Available Engines: SoundTouch (8.5/10) | Superpowered (9.5/10) | Rubberband (install to enable)");
+            LOGI("Available Engines: SoundTouch (8.5/10) | Superpowered (9.5/10)");
 #endif
+        } else {
+#if USE_RUBBERBAND
+            LOGI("Available Engines: SoundTouch (8.5/10) | Rubberband (10/10)");
+#else
+            LOGI("Available Engines: SoundTouch (8.5/10) - Get Superpowered license for more options!");
+#endif
+        }
         LOGI("Speed: 0.05x-10x | Pitch: -36 to +36 semitones | Battle Mode Ready!");
     }
 
@@ -219,33 +240,36 @@ public:
         this->sampleRate = sampleRate;
         this->channels = channels;
 
-        // Configure Superpowered time stretcher
-        if (timeStretcher) delete timeStretcher;
-        timeStretcher = new Superpowered::TimeStretching(sampleRate, 0.01f);
-        timeStretcher->sound = 2;  // Highest quality
-        timeStretcher->formantCorrection = formantPreservation ? 0.7f : 0.0f;
+        // Configure Superpowered (only if license available)
+        if (superpoweredAvailable) {
+            // Configure Superpowered time stretcher
+            if (timeStretcher) delete timeStretcher;
+            timeStretcher = new Superpowered::TimeStretching(sampleRate, 0.01f);
+            timeStretcher->sound = 2;  // Highest quality
+            timeStretcher->formantCorrection = formantPreservation ? 0.7f : 0.0f;
 
-        // Configure Superpowered effects
-        if (spCompressor) {
-            delete spCompressor;
-            spCompressor = new Superpowered::Compressor(sampleRate);
-            spCompressor->enabled = battleMode;
-            spCompressor->attackSec = 0.003f;
-            spCompressor->releaseSec = 0.3f;
-            spCompressor->ratio = 4.0f;
-            spCompressor->thresholdDb = -10.0f;
-        }
-        if (spLimiter) {
-            delete spLimiter;
-            spLimiter = new Superpowered::Limiter(sampleRate);
-            spLimiter->enabled = limiterEnabled;
-            spLimiter->ceilingDb = -0.1f;
-            spLimiter->thresholdDb = -0.3f;
-        }
-        if (spEQ) {
-            delete spEQ;
-            spEQ = new Superpowered::ThreeBandEQ(sampleRate);
-            spEQ->enabled = (bassBoostAmount > 0);
+            // Configure Superpowered effects
+            if (spCompressor) {
+                delete spCompressor;
+                spCompressor = new Superpowered::Compressor(sampleRate);
+                spCompressor->enabled = battleMode;
+                spCompressor->attackSec = 0.003f;
+                spCompressor->releaseSec = 0.3f;
+                spCompressor->ratio = 4.0f;
+                spCompressor->thresholdDb = -10.0f;
+            }
+            if (spLimiter) {
+                delete spLimiter;
+                spLimiter = new Superpowered::Limiter(sampleRate);
+                spLimiter->enabled = limiterEnabled;
+                spLimiter->ceilingDb = -0.1f;
+                spLimiter->thresholdDb = -0.3f;
+            }
+            if (spEQ) {
+                delete spEQ;
+                spEQ = new Superpowered::ThreeBandEQ(sampleRate);
+                spEQ->enabled = (bassBoostAmount > 0);
+            }
         }
 
         // Configure SoundTouch
