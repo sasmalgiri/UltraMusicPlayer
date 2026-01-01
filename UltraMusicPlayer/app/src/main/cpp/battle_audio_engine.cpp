@@ -25,9 +25,9 @@
 // ENGINE CONFIGURATION
 // All engines now available at RUNTIME - user can switch between them
 // =============================================================================
-// Get your FREE license at: https://superpowered.com/dev (for apps earning <$100K/year)
-// Without license, app uses SoundTouch only (still very good quality)
-#define SUPERPOWERED_LICENSE ""
+// Superpowered EVALUATION License (max 1000 installs, expires on SDK update)
+// For production: Contact licensing@superpowered.com for Starter or White Label license
+#define SUPERPOWERED_LICENSE "ExampleLicenseKey-WillExpire-OnNextUpdate"
 #define HAS_SUPERPOWERED_LICENSE (strlen(SUPERPOWERED_LICENSE) > 10)
 // =============================================================================
 
