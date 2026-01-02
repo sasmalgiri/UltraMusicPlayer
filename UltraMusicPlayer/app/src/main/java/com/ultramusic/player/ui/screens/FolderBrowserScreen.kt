@@ -153,6 +153,11 @@ fun FolderBrowserScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
+            // Extract songs from browseItems
+            val songsInCurrentFolder = browseItems
+                .filterIsInstance<BrowseItem.SongItem>()
+                .map { it.song }
+
             // Use Enhanced Folder Browser when enabled and folders are available
             if (useEnhancedBrowser && enhancedFolders.isNotEmpty()) {
                 EnhancedFolderBrowser(
@@ -166,7 +171,12 @@ fun FolderBrowserScreen(
                     onToggleShortcut = { viewModel.toggleFolderShortcut(it) },
                     onNavigateToPath = { viewModel.navigateToPath(it) },
                     onNavigateUp = { viewModel.navigateUp() },
-                    modifier = Modifier.fillMaxSize()
+                    modifier = Modifier.fillMaxSize(),
+                    // Songs support
+                    songs = songsInCurrentFolder,
+                    currentPlayingSongId = playbackState.currentSong?.id,
+                    onSongClick = { song -> viewModel.playSongFromFolder(song) },
+                    onAddToPlaylist = { song -> viewModel.addToPlaylistEnd(song) }
                 )
             } else {
                 // Fallback to basic browser

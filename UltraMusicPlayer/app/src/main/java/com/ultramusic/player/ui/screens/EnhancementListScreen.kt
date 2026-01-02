@@ -23,6 +23,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.HighQuality
@@ -61,6 +62,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ultramusic.player.ui.MainViewModel
+import com.ultramusic.player.ui.components.FloatValueEditDialog
 
 /**
  * Enhancement List Screen
@@ -320,6 +322,23 @@ private fun SpeedControlContent(
         else -> MaterialTheme.colorScheme.primary
     }
 
+    var showEditDialog by remember { mutableStateOf(false) }
+
+    if (showEditDialog) {
+        FloatValueEditDialog(
+            title = "Edit Speed",
+            initialValue = speed,
+            valueRange = 0.25f..4f,
+            decimals = 2,
+            suffix = "x",
+            onDismiss = { showEditDialog = false },
+            onConfirm = {
+                showEditDialog = false
+                onSpeedChange(it)
+            }
+        )
+    }
+
     Column {
         // Slider with min/max labels
         Row(
@@ -345,23 +364,24 @@ private fun SpeedControlContent(
             )
         }
 
-        // CURRENT VALUE - Always visible, centered, prominent
-        Box(
+        // CURRENT VALUE + Edit button
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(
-                    speedColor.copy(alpha = 0.15f),
-                    RoundedCornerShape(8.dp)
-                )
-                .padding(vertical = 8.dp),
-            contentAlignment = androidx.compose.ui.Alignment.Center
+                .background(speedColor.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Text(
                 text = String.format("%.2fx", speed),
                 style = MaterialTheme.typography.titleLarge,
-                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                fontWeight = FontWeight.Bold,
                 color = speedColor
             )
+            IconButton(onClick = { showEditDialog = true }) {
+                Icon(Icons.Default.Edit, contentDescription = "Edit Speed", tint = speedColor)
+            }
         }
 
         Spacer(modifier = Modifier.height(8.dp))
@@ -424,6 +444,23 @@ private fun PitchControlContent(
         else -> MaterialTheme.colorScheme.primary
     }
 
+    var showEditDialog by remember { mutableStateOf(false) }
+
+    if (showEditDialog) {
+        FloatValueEditDialog(
+            title = "Edit Pitch",
+            initialValue = pitch,
+            valueRange = -36f..36f,
+            decimals = 1,
+            suffix = " semitones",
+            onDismiss = { showEditDialog = false },
+            onConfirm = {
+                showEditDialog = false
+                onPitchChange(it)
+            }
+        )
+    }
+
     Column {
         // Slider with min/max labels
         Row(
@@ -449,24 +486,25 @@ private fun PitchControlContent(
             )
         }
 
-        // CURRENT VALUE - Always visible, centered, prominent
-        Box(
+        // CURRENT VALUE + Edit button
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(
-                    pitchColor.copy(alpha = 0.15f),
-                    RoundedCornerShape(8.dp)
-                )
-                .padding(vertical = 8.dp),
-            contentAlignment = androidx.compose.ui.Alignment.Center
+                .background(pitchColor.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
             val sign = if (pitch > 0) "+" else ""
             Text(
                 text = "${sign}${String.format("%.1f", pitch)} semitones",
                 style = MaterialTheme.typography.titleLarge,
-                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                fontWeight = FontWeight.Bold,
                 color = pitchColor
             )
+            IconButton(onClick = { showEditDialog = true }) {
+                Icon(Icons.Default.Edit, contentDescription = "Edit Pitch", tint = pitchColor)
+            }
         }
 
         Spacer(modifier = Modifier.height(8.dp))

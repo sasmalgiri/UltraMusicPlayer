@@ -18,6 +18,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Loop
@@ -272,6 +273,23 @@ private fun SpeedSection(
         else -> MaterialTheme.colorScheme.primary
     }
 
+    var showEditDialog by remember { mutableStateOf(false) }
+
+    if (showEditDialog) {
+        FloatValueEditDialog(
+            title = "Edit Speed",
+            initialValue = speed,
+            valueRange = UltraMusicApp.MIN_SPEED..UltraMusicApp.MAX_SPEED,
+            decimals = 2,
+            suffix = "x",
+            onDismiss = { showEditDialog = false },
+            onConfirm = {
+                showEditDialog = false
+                onSpeedChange(it)
+            }
+        )
+    }
+
     Column {
         // Header row with label
         Row(
@@ -294,13 +312,22 @@ private fun SpeedSection(
                 )
             }
 
-            if (speed != 1.0f) {
-                OutlinedButton(
-                    onClick = onReset,
-                    modifier = Modifier.height(24.dp),
-                    contentPadding = ButtonDefaults.TextButtonContentPadding
-                ) {
-                    Text("Reset", fontSize = 10.sp)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = { showEditDialog = true }) {
+                    Icon(
+                        imageVector = Icons.Default.Edit,
+                        contentDescription = "Edit Speed",
+                        tint = speedColor
+                    )
+                }
+                if (speed != 1.0f) {
+                    OutlinedButton(
+                        onClick = onReset,
+                        modifier = Modifier.height(24.dp),
+                        contentPadding = ButtonDefaults.TextButtonContentPadding
+                    ) {
+                        Text("Reset", fontSize = 10.sp)
+                    }
                 }
             }
         }
@@ -346,13 +373,21 @@ private fun SpeedSection(
             )
         }
 
-        // CURRENT VALUE - Tap to edit manually
-        EditableSpeedBox(
-            speed = speed,
-            color = speedColor,
-            onSpeedChange = onSpeedChange,
+        // Current value display
+        Surface(
+            color = speedColor.copy(alpha = 0.12f),
+            shape = RoundedCornerShape(8.dp),
             modifier = Modifier.fillMaxWidth()
-        )
+        ) {
+            Text(
+                text = String.format("%.2fx", speed),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = speedColor,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(vertical = 8.dp)
+            )
+        }
 
         Spacer(modifier = Modifier.height(6.dp))
 
@@ -386,6 +421,23 @@ private fun PitchSection(
         else -> MaterialTheme.colorScheme.primary
     }
 
+    var showEditDialog by remember { mutableStateOf(false) }
+
+    if (showEditDialog) {
+        FloatValueEditDialog(
+            title = "Edit Pitch",
+            initialValue = pitch,
+            valueRange = UltraMusicApp.MIN_PITCH_SEMITONES..UltraMusicApp.MAX_PITCH_SEMITONES,
+            decimals = 1,
+            suffix = " st",
+            onDismiss = { showEditDialog = false },
+            onConfirm = {
+                showEditDialog = false
+                onPitchChange(it)
+            }
+        )
+    }
+
     Column {
         // Header row with label
         Row(
@@ -406,13 +458,22 @@ private fun PitchSection(
                 )
             }
 
-            if (pitch != 0f) {
-                OutlinedButton(
-                    onClick = onReset,
-                    modifier = Modifier.height(24.dp),
-                    contentPadding = ButtonDefaults.TextButtonContentPadding
-                ) {
-                    Text("Reset", fontSize = 10.sp)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = { showEditDialog = true }) {
+                    Icon(
+                        imageVector = Icons.Default.Edit,
+                        contentDescription = "Edit Pitch",
+                        tint = pitchColor
+                    )
+                }
+                if (pitch != 0f) {
+                    OutlinedButton(
+                        onClick = onReset,
+                        modifier = Modifier.height(24.dp),
+                        contentPadding = ButtonDefaults.TextButtonContentPadding
+                    ) {
+                        Text("Reset", fontSize = 10.sp)
+                    }
                 }
             }
         }
@@ -458,13 +519,22 @@ private fun PitchSection(
             )
         }
 
-        // CURRENT VALUE - Tap to edit manually
-        EditablePitchBox(
-            pitch = pitch,
-            color = pitchColor,
-            onPitchChange = onPitchChange,
+        // Current value display
+        Surface(
+            color = pitchColor.copy(alpha = 0.12f),
+            shape = RoundedCornerShape(8.dp),
             modifier = Modifier.fillMaxWidth()
-        )
+        ) {
+            val sign = if (pitch > 0) "+" else ""
+            Text(
+                text = "$sign${String.format("%.1f", pitch)} st",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = pitchColor,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(vertical = 8.dp)
+            )
+        }
 
         Spacer(modifier = Modifier.height(6.dp))
 
@@ -871,6 +941,21 @@ private fun AudioSlider(
     valueDisplay: (Int) -> String,
     accentColor: Color
 ) {
+    var showEditDialog by remember { mutableStateOf(false) }
+
+    if (showEditDialog) {
+        IntValueEditDialog(
+            title = "Edit $label",
+            initialValue = value,
+            valueRange = valueRange,
+            onDismiss = { showEditDialog = false },
+            onConfirm = {
+                showEditDialog = false
+                onValueChange(it)
+            }
+        )
+    }
+
     Column {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -882,15 +967,23 @@ private fun AudioSlider(
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.Medium
             )
-            // Editable value box
-            EditableIntBox(
-                value = value,
-                min = valueRange.first,
-                max = valueRange.last,
-                color = accentColor,
-                onValueChange = onValueChange,
-                modifier = Modifier.width(70.dp)
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(
+                    color = accentColor.copy(alpha = 0.12f),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text(
+                        text = valueDisplay(value),
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = accentColor,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                    )
+                }
+                IconButton(onClick = { showEditDialog = true }) {
+                    Icon(Icons.Default.Edit, contentDescription = "Edit $label", tint = accentColor)
+                }
+            }
         }
 
         Slider(

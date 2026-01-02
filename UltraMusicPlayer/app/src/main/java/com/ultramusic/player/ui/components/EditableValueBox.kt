@@ -9,6 +9,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -19,6 +21,10 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -235,18 +241,41 @@ fun EditableSpeedBox(
     onSpeedChange: (Float) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    EditableValueBox(
-        valueType = ValueType.FloatValue(
-            value = speed,
-            min = UltraMusicApp.MIN_SPEED,
-            max = UltraMusicApp.MAX_SPEED,
+    var showEditDialog by remember { mutableStateOf(false) }
+
+    if (showEditDialog) {
+        FloatValueEditDialog(
+            title = "Edit Speed",
+            initialValue = speed,
+            valueRange = UltraMusicApp.MIN_SPEED..UltraMusicApp.MAX_SPEED,
             decimals = 2,
-            suffix = "x"
-        ),
-        color = color,
-        onValueChange = { onSpeedChange(it as Float) },
+            suffix = "x",
+            onDismiss = { showEditDialog = false },
+            onConfirm = {
+                showEditDialog = false
+                onSpeedChange(it)
+            }
+        )
+    }
+
+    Row(
         modifier = modifier
-    )
+            .clip(RoundedCornerShape(8.dp))
+            .background(color.copy(alpha = 0.15f))
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = "${String.format("%.2f", speed)}x",
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold,
+            color = color
+        )
+        IconButton(onClick = { showEditDialog = true }) {
+            Icon(Icons.Filled.Edit, contentDescription = "Edit Speed", tint = color)
+        }
+    }
 }
 
 /**
@@ -259,20 +288,42 @@ fun EditablePitchBox(
     onPitchChange: (Float) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    var showEditDialog by remember { mutableStateOf(false) }
     val sign = if (pitch > 0) "+" else ""
-    EditableValueBox(
-        valueType = ValueType.FloatValue(
-            value = pitch,
-            min = UltraMusicApp.MIN_PITCH_SEMITONES,
-            max = UltraMusicApp.MAX_PITCH_SEMITONES,
+
+    if (showEditDialog) {
+        FloatValueEditDialog(
+            title = "Edit Pitch",
+            initialValue = pitch,
+            valueRange = UltraMusicApp.MIN_PITCH_SEMITONES..UltraMusicApp.MAX_PITCH_SEMITONES,
             decimals = 1,
-            suffix = " st"
-        ),
-        displayText = "${sign}${String.format("%.1f", pitch)} semitones",
-        color = color,
-        onValueChange = { onPitchChange(it as Float) },
+            suffix = " st",
+            onDismiss = { showEditDialog = false },
+            onConfirm = {
+                showEditDialog = false
+                onPitchChange(it)
+            }
+        )
+    }
+
+    Row(
         modifier = modifier
-    )
+            .clip(RoundedCornerShape(8.dp))
+            .background(color.copy(alpha = 0.15f))
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = "${sign}${String.format("%.1f", pitch)} semitones",
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold,
+            color = color
+        )
+        IconButton(onClick = { showEditDialog = true }) {
+            Icon(Icons.Filled.Edit, contentDescription = "Edit Pitch", tint = color)
+        }
+    }
 }
 
 /**

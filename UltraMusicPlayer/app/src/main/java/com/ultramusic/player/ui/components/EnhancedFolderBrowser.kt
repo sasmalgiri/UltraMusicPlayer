@@ -40,9 +40,13 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material3.Badge
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Divider
@@ -70,6 +74,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
+import com.ultramusic.player.data.Song
 
 /**
  * Folder Browser View Mode
@@ -125,7 +131,12 @@ fun EnhancedFolderBrowser(
     onNavigateToPath: (String) -> Unit,
     onNavigateUp: () -> Unit,
     modifier: Modifier = Modifier,
-    accentColor: Color = MaterialTheme.colorScheme.primary
+    accentColor: Color = MaterialTheme.colorScheme.primary,
+    // New parameters for songs
+    songs: List<Song> = emptyList(),
+    currentPlayingSongId: Long? = null,
+    onSongClick: (Song) -> Unit = {},
+    onAddToPlaylist: (Song) -> Unit = {}
 ) {
     var searchQuery by remember { mutableStateOf("") }
     var isSearchExpanded by remember { mutableStateOf(false) }
@@ -177,14 +188,18 @@ fun EnhancedFolderBrowser(
             color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
         )
 
-        // Folder List
+        // Folder and Song List
         when (viewMode) {
             FolderViewMode.HIERARCHICAL -> {
                 HierarchicalFolderList(
                     folders = filteredFolders,
+                    songs = songs,
+                    currentPlayingSongId = currentPlayingSongId,
                     onFolderClick = onFolderClick,
                     onPlayFolder = onPlayFolder,
                     onToggleShortcut = onToggleShortcut,
+                    onSongClick = onSongClick,
+                    onAddToPlaylist = onAddToPlaylist,
                     shortcuts = shortcuts,
                     accentColor = accentColor
                 )
@@ -192,9 +207,13 @@ fun EnhancedFolderBrowser(
             FolderViewMode.LINEAR -> {
                 LinearFolderList(
                     folders = filteredFolders,
+                    songs = songs,
+                    currentPlayingSongId = currentPlayingSongId,
                     onFolderClick = onFolderClick,
                     onPlayFolder = onPlayFolder,
                     onToggleShortcut = onToggleShortcut,
+                    onSongClick = onSongClick,
+                    onAddToPlaylist = onAddToPlaylist,
                     shortcuts = shortcuts,
                     accentColor = accentColor
                 )
@@ -498,9 +517,13 @@ private fun BreadcrumbNavigation(
 @Composable
 private fun HierarchicalFolderList(
     folders: List<FolderItem>,
+    songs: List<Song>,
+    currentPlayingSongId: Long?,
     onFolderClick: (FolderItem) -> Unit,
     onPlayFolder: (FolderItem) -> Unit,
     onToggleShortcut: (FolderItem) -> Unit,
+    onSongClick: (Song) -> Unit,
+    onAddToPlaylist: (Song) -> Unit,
     shortcuts: List<FolderItem>,
     accentColor: Color
 ) {
@@ -509,6 +532,7 @@ private fun HierarchicalFolderList(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
+        // Show folders first
         items(folders) { folder ->
             HierarchicalFolderItem(
                 folder = folder,
@@ -520,6 +544,30 @@ private fun HierarchicalFolderList(
                 shortcuts = shortcuts,
                 accentColor = accentColor
             )
+        }
+
+        // Show songs after folders
+        if (songs.isNotEmpty()) {
+            item {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "SONGS (${songs.size})",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                    modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
+                )
+            }
+
+            items(songs) { song ->
+                SongListItem(
+                    song = song,
+                    isPlaying = currentPlayingSongId == song.id,
+                    onSongClick = onSongClick,
+                    onAddToPlaylist = onAddToPlaylist,
+                    accentColor = accentColor
+                )
+            }
         }
     }
 }
@@ -557,13 +605,8 @@ private fun HierarchicalFolderItem(
                     MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
             ),
             shape = RoundedCornerShape(8.dp),
-            onClick = {
-                if (folder.subFolders.isNotEmpty()) {
-                    isExpanded = !isExpanded
-                } else {
-                    onFolderClick(folder)
-                }
-            }
+            // Clicking the card opens the folder to show songs
+            onClick = { onFolderClick(folder) }
         ) {
             Row(
                 modifier = Modifier
@@ -571,18 +614,30 @@ private fun HierarchicalFolderItem(
                     .padding(12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Expand/Collapse indicator
+                // Expand/Collapse indicator - separate clickable
                 if (folder.subFolders.isNotEmpty()) {
-                    Icon(
-                        Icons.Default.ChevronRight,
-                        contentDescription = if (isExpanded) "Collapse" else "Expand",
+                    Box(
                         modifier = Modifier
-                            .size(20.dp)
-                            .rotate(rotationAngle),
-                        tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                    )
+                            .size(28.dp)
+                            .clip(RoundedCornerShape(4.dp))
+                            .clickable { isExpanded = !isExpanded }
+                            .background(
+                                if (isExpanded) accentColor.copy(alpha = 0.1f)
+                                else Color.Transparent
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Default.ChevronRight,
+                            contentDescription = if (isExpanded) "Collapse subfolders" else "Expand subfolders",
+                            modifier = Modifier
+                                .size(20.dp)
+                                .rotate(rotationAngle),
+                            tint = if (isExpanded) accentColor else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                        )
+                    }
                 } else {
-                    Spacer(modifier = Modifier.width(20.dp))
+                    Spacer(modifier = Modifier.width(28.dp))
                 }
 
                 Spacer(modifier = Modifier.width(8.dp))
@@ -671,9 +726,13 @@ private fun HierarchicalFolderItem(
 @Composable
 private fun LinearFolderList(
     folders: List<FolderItem>,
+    songs: List<Song>,
+    currentPlayingSongId: Long?,
     onFolderClick: (FolderItem) -> Unit,
     onPlayFolder: (FolderItem) -> Unit,
     onToggleShortcut: (FolderItem) -> Unit,
+    onSongClick: (Song) -> Unit,
+    onAddToPlaylist: (Song) -> Unit,
     shortcuts: List<FolderItem>,
     accentColor: Color
 ) {
@@ -687,6 +746,7 @@ private fun LinearFolderList(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
+        // Show folders first
         items(flatFolders.sortedBy { it.name.lowercase() }) { folder ->
             LinearFolderItem(
                 folder = folder,
@@ -696,6 +756,30 @@ private fun LinearFolderList(
                 onToggleShortcut = onToggleShortcut,
                 accentColor = accentColor
             )
+        }
+
+        // Show songs after folders
+        if (songs.isNotEmpty()) {
+            item {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "SONGS (${songs.size})",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                    modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
+                )
+            }
+
+            items(songs) { song ->
+                SongListItem(
+                    song = song,
+                    isPlaying = currentPlayingSongId == song.id,
+                    onSongClick = onSongClick,
+                    onAddToPlaylist = onAddToPlaylist,
+                    accentColor = accentColor
+                )
+            }
         }
     }
 }
@@ -843,4 +927,153 @@ private fun flattenFolders(folders: List<FolderItem>): List<FolderItem> {
 
     folders.forEach { flatten(it) }
     return result
+}
+
+/**
+ * Song list item with play and add to playlist options
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SongListItem(
+    song: Song,
+    isPlaying: Boolean,
+    onSongClick: (Song) -> Unit,
+    onAddToPlaylist: (Song) -> Unit,
+    accentColor: Color
+) {
+    var showMenu by remember { mutableStateOf(false) }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isPlaying)
+                accentColor.copy(alpha = 0.15f)
+            else
+                MaterialTheme.colorScheme.surface
+        ),
+        shape = RoundedCornerShape(8.dp),
+        onClick = { onSongClick(song) }
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Album art or music icon
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                contentAlignment = Alignment.Center
+            ) {
+                if (song.albumArtUri != null) {
+                    AsyncImage(
+                        model = song.albumArtUri,
+                        contentDescription = "Album art",
+                        modifier = Modifier.size(48.dp)
+                    )
+                } else {
+                    Icon(
+                        imageVector = Icons.Default.MusicNote,
+                        contentDescription = null,
+                        modifier = Modifier.size(24.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                // Playing indicator overlay
+                if (isPlaying) {
+                    Box(
+                        modifier = Modifier
+                            .size(48.dp)
+                            .background(
+                                accentColor.copy(alpha = 0.85f),
+                                RoundedCornerShape(8.dp)
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.PlayArrow,
+                            contentDescription = "Now playing",
+                            tint = Color.White,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            // Song info
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = song.title,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = if (isPlaying) FontWeight.Bold else FontWeight.Medium,
+                    color = if (isPlaying) accentColor else MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = song.artist,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+
+            // Duration
+            Text(
+                text = song.durationFormatted,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                modifier = Modifier.padding(end = 8.dp)
+            )
+
+            // More options button
+            Box {
+                IconButton(
+                    onClick = { showMenu = true },
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.MoreVert,
+                        contentDescription = "More options",
+                        tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+
+                // Dropdown menu
+                DropdownMenu(
+                    expanded = showMenu,
+                    onDismissRequest = { showMenu = false }
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Play") },
+                        onClick = {
+                            onSongClick(song)
+                            showMenu = false
+                        },
+                        leadingIcon = {
+                            Icon(Icons.Default.PlayArrow, contentDescription = null)
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Add to Playlist") },
+                        onClick = {
+                            onAddToPlaylist(song)
+                            showMenu = false
+                        },
+                        leadingIcon = {
+                            Icon(Icons.Default.PlaylistAdd, contentDescription = null)
+                        }
+                    )
+                }
+            }
+        }
+    }
 }

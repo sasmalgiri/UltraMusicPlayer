@@ -46,6 +46,7 @@ import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.FastRewind
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Pause
@@ -117,6 +118,8 @@ import com.ultramusic.player.data.Song
 import com.ultramusic.player.data.SongMatch
 import com.ultramusic.player.audio.AudioEngineType
 import com.ultramusic.player.ui.MainViewModel
+import com.ultramusic.player.ui.components.FloatValueEditDialog
+import com.ultramusic.player.ui.components.IntValueEditDialog
 import kotlin.math.sin
 import kotlin.random.Random
 
@@ -1206,7 +1209,7 @@ private fun AudioEnhancementRow(
                     }
                 }
 
-                // Bass slider
+                // Bass slider (click value for manual input)
                 AudioMiniSlider(
                     label = "🎸 Bass",
                     value = bassLevel,
@@ -1217,7 +1220,7 @@ private fun AudioEnhancementRow(
 
                 Spacer(modifier = Modifier.height(6.dp))
 
-                // Loudness slider
+                // Loudness slider (click value for manual input)
                 AudioMiniSlider(
                     label = "📢 Loudness",
                     value = loudnessGain,
@@ -1228,7 +1231,7 @@ private fun AudioEnhancementRow(
 
                 Spacer(modifier = Modifier.height(6.dp))
 
-                // Clarity slider
+                // Clarity slider (click value for manual input)
                 AudioMiniSlider(
                     label = "✨ Clarity",
                     value = clarityLevel,
@@ -1239,7 +1242,7 @@ private fun AudioEnhancementRow(
 
                 Spacer(modifier = Modifier.height(6.dp))
 
-                // Spatial slider
+                // Spatial slider (click value for manual input)
                 AudioMiniSlider(
                     label = "🎧 Spatial",
                     value = spatialLevel,
@@ -1272,6 +1275,86 @@ private fun AudioEnhancementRow(
             }
         }
     }
+
+}
+
+// Integer input dialog for audio controls
+@Composable
+private fun IntInputDialog(
+    title: String,
+    currentValue: Int,
+    minValue: Int,
+    maxValue: Int,
+    suffix: String,
+    onDismiss: () -> Unit,
+    onConfirm: (Int) -> Unit
+) {
+    var inputValue by remember { mutableStateOf(currentValue.toString()) }
+    var isError by remember { mutableStateOf(false) }
+
+    fun validateAndGetValue(): Int? {
+        val value = inputValue.toIntOrNull() ?: return null
+        if (value < minValue || value > maxValue) return null
+        return value
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = inputValue,
+                    onValueChange = {
+                        inputValue = it
+                        isError = validateAndGetValue() == null && it.isNotEmpty()
+                    },
+                    label = { Text("Enter value ($minValue-$maxValue$suffix)") },
+                    isError = isError,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Quick adjustment buttons
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    listOf(0, 25, 50, 75, 100).forEach { preset ->
+                        if (preset in minValue..maxValue) {
+                            OutlinedButton(
+                                onClick = {
+                                    inputValue = preset.toString()
+                                    isError = false
+                                },
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                            ) {
+                                Text("$preset$suffix", fontSize = 11.sp)
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    validateAndGetValue()?.let { onConfirm(it) }
+                },
+                enabled = validateAndGetValue() != null
+            ) {
+                Text("OK")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
 }
 
 @Composable
@@ -1282,6 +1365,26 @@ private fun AudioMiniSlider(
     color: Color,
     onValueChange: (Int) -> Unit
 ) {
+    var showEditDialog by remember { mutableStateOf(false) }
+
+    val displayedPercentValue = if (maxValue == 100) value else (value / 10)
+    val percentValueRange = 0..100
+
+    if (showEditDialog) {
+        IntValueEditDialog(
+            title = "Edit $label",
+            initialValue = displayedPercentValue,
+            valueRange = percentValueRange,
+            suffix = "%",
+            onDismiss = { showEditDialog = false },
+            onConfirm = {
+                showEditDialog = false
+                val newInternal = if (maxValue == 100) it else it * 10
+                onValueChange(newInternal)
+            }
+        )
+    }
+
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
@@ -1303,13 +1406,24 @@ private fun AudioMiniSlider(
             )
         )
 
-        Text(
-            text = if (maxValue == 100) "$value%" else "${value / 10}%",
-            style = MaterialTheme.typography.labelSmall,
-            color = color,
-            modifier = Modifier.width(40.dp),
-            textAlign = TextAlign.End
-        )
+        Surface(
+            color = color.copy(alpha = 0.1f),
+            shape = RoundedCornerShape(4.dp),
+            modifier = Modifier.width(48.dp)
+        ) {
+            Text(
+                text = "$displayedPercentValue%",
+                style = MaterialTheme.typography.labelSmall,
+                color = color,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                textAlign = TextAlign.Center
+            )
+        }
+
+        IconButton(onClick = { showEditDialog = true }) {
+            Icon(Icons.Default.Edit, contentDescription = "Edit $label", tint = color)
+        }
     }
 }
 
@@ -1343,41 +1457,86 @@ private fun WaveformWithABMarkers(
     onSetLoopAMs: (Long) -> Unit = {},
     onSetLoopBMs: (Long) -> Unit = {}
 ) {
-    val loopColor = MaterialTheme.colorScheme.tertiary
-    var showLoopADialog by remember { mutableStateOf(false) }
-    var showLoopBDialog by remember { mutableStateOf(false) }
+    // Marker colors
+    val markerAColor = Color(0xFF00E5FF)  // Cyan
+    val markerBColor = Color(0xFFFFEA00)  // Yellow
 
     Column(modifier = Modifier.fillMaxWidth()) {
-        // Time display
+        // Loop control row: Loop [A] [B] [X]
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = formatTime(position),
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                text = "Loop",
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurface
             )
 
-            // A-B Loop status (clickable to edit)
-            if (loopStartPosition != null || loopEndPosition != null) {
-                Text(
-                    text = "Loop: ${formatTime(loopStartPosition ?: 0)} - ${formatTime(loopEndPosition ?: duration)}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = loopColor
-                )
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // A button - filled when set
+                Surface(
+                    onClick = onSetLoopA,
+                    shape = RoundedCornerShape(6.dp),
+                    color = if (loopStartPosition != null) markerAColor else MaterialTheme.colorScheme.surfaceVariant,
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text(
+                            text = "A",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = if (loopStartPosition != null) Color.Black else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                // B button - filled when set
+                Surface(
+                    onClick = onSetLoopB,
+                    shape = RoundedCornerShape(6.dp),
+                    color = if (loopEndPosition != null) markerBColor else MaterialTheme.colorScheme.surfaceVariant,
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text(
+                            text = "B",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = if (loopEndPosition != null) Color.Black else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                // Clear button (X) - only visible when loop is active
+                if (loopStartPosition != null || loopEndPosition != null) {
+                    Surface(
+                        onClick = onClearLoop,
+                        shape = RoundedCornerShape(6.dp),
+                        color = MaterialTheme.colorScheme.errorContainer,
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Clear loop",
+                                tint = MaterialTheme.colorScheme.onErrorContainer,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+                }
             }
-
-            Text(
-                text = formatTime(duration),
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
         }
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        // Real waveform visualization
+        // Real waveform visualization with drag support
         com.ultramusic.player.ui.components.WaveformView(
             audioPath = songPath,
             currentPosition = position,
@@ -1389,116 +1548,61 @@ private fun WaveformWithABMarkers(
                     onSeek(seekPos.toFloat() / duration)
                 }
             },
+            onLoopStartChange = onSetLoopAMs,
+            onLoopEndChange = onSetLoopBMs,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(80.dp),
+                .height(100.dp),
             waveformColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f),
             progressColor = MaterialTheme.colorScheme.primary,
-            backgroundColor = MaterialTheme.colorScheme.surface,
-            loopColor = loopColor
+            backgroundColor = MaterialTheme.colorScheme.surface
         )
 
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(4.dp))
 
-        // A-B Loop buttons with manual input
+        // Time display with milliseconds
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            // Set A button - tap to set at current position, long-press for manual input
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                FilledTonalButton(
-                    onClick = onSetLoopA,
-                    modifier = Modifier.width(80.dp),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
-                ) {
-                    Text(
-                        text = if (loopStartPosition != null) "A ✓" else "Set A",
-                        style = MaterialTheme.typography.labelMedium
-                    )
-                }
-                // Manual input button
-                TextButton(
-                    onClick = { showLoopADialog = true },
-                    contentPadding = PaddingValues(4.dp)
-                ) {
-                    Text(
-                        text = if (loopStartPosition != null) formatTime(loopStartPosition) else "Manual",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
-            }
+            // Current position / total duration
+            Text(
+                text = "${formatTime(position)} / ${formatTime(duration)}",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
 
-            Spacer(modifier = Modifier.width(12.dp))
-
-            // Set B button
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                FilledTonalButton(
-                    onClick = onSetLoopB,
-                    modifier = Modifier.width(80.dp),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
-                ) {
-                    Text(
-                        text = if (loopEndPosition != null) "B ✓" else "Set B",
-                        style = MaterialTheme.typography.labelMedium
-                    )
-                }
-                // Manual input button
-                TextButton(
-                    onClick = { showLoopBDialog = true },
-                    contentPadding = PaddingValues(4.dp)
-                ) {
-                    Text(
-                        text = if (loopEndPosition != null) formatTime(loopEndPosition) else "Manual",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.width(12.dp))
-
-            // Clear loop button
+            // Loop positions with ms precision (if loop is set)
             if (loopStartPosition != null || loopEndPosition != null) {
-                FilledTonalButton(
-                    onClick = onClearLoop,
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
-                ) {
-                    Text("Clear", style = MaterialTheme.typography.labelMedium)
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    if (loopStartPosition != null) {
+                        Text(
+                            text = "A: ${formatTimeWithMs(loopStartPosition)}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = markerAColor
+                        )
+                    }
+                    if (loopEndPosition != null) {
+                        Text(
+                            text = "B: ${formatTimeWithMs(loopEndPosition)}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = markerBColor
+                        )
+                    }
                 }
             }
         }
     }
+}
 
-    // Loop A time input dialog
-    if (showLoopADialog) {
-        TimeInputDialog(
-            title = "Set Loop A Position",
-            currentTimeMs = loopStartPosition ?: position,
-            maxTimeMs = duration,
-            onDismiss = { showLoopADialog = false },
-            onConfirm = { timeMs ->
-                onSetLoopAMs(timeMs)
-                showLoopADialog = false
-            }
-        )
-    }
-
-    // Loop B time input dialog
-    if (showLoopBDialog) {
-        TimeInputDialog(
-            title = "Set Loop B Position",
-            currentTimeMs = loopEndPosition ?: position,
-            maxTimeMs = duration,
-            onDismiss = { showLoopBDialog = false },
-            onConfirm = { timeMs ->
-                onSetLoopBMs(timeMs)
-                showLoopBDialog = false
-            }
-        )
-    }
+/**
+ * Format time with milliseconds: m:ss.ms
+ */
+private fun formatTimeWithMs(ms: Long): String {
+    val minutes = ms / 60000
+    val seconds = (ms % 60000) / 1000
+    val millis = ms % 1000
+    return "%d:%02d.%03d".format(minutes, seconds, millis)
 }
 
 // Time input dialog for loop positions (mm:ss format)
@@ -1652,7 +1756,7 @@ private fun QuickEnhancementsRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             contentPadding = PaddingValues(horizontal = 4.dp)
         ) {
-            // Speed section with manual input
+            // Speed section
             item {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
@@ -1661,13 +1765,19 @@ private fun QuickEnhancementsRow(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(end = 4.dp)
                     )
-                    // Manual input button showing current value
-                    OutlinedButton(
-                        onClick = { showSpeedDialog = true },
-                        modifier = Modifier.height(32.dp),
-                        contentPadding = PaddingValues(horizontal = 8.dp)
+                    Surface(
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        shape = RoundedCornerShape(8.dp)
                     ) {
-                        Text("${String.format("%.2f", speed)}x", style = MaterialTheme.typography.labelSmall)
+                        Text(
+                            "${String.format("%.2f", speed)}x",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                        )
+                    }
+                    IconButton(onClick = { showSpeedDialog = true }) {
+                        Icon(Icons.Default.Edit, contentDescription = "Edit Speed")
                     }
                 }
             }
@@ -1684,7 +1794,7 @@ private fun QuickEnhancementsRow(
             // Divider
             item { Spacer(modifier = Modifier.width(8.dp)) }
 
-            // Pitch section with manual input
+            // Pitch section
             item {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
@@ -1693,16 +1803,19 @@ private fun QuickEnhancementsRow(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(end = 4.dp)
                     )
-                    // Manual input button showing current value
-                    OutlinedButton(
-                        onClick = { showPitchDialog = true },
-                        modifier = Modifier.height(32.dp),
-                        contentPadding = PaddingValues(horizontal = 8.dp)
+                    Surface(
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        shape = RoundedCornerShape(8.dp)
                     ) {
                         Text(
                             if (pitch >= 0) "+${String.format("%.1f", pitch)}" else String.format("%.1f", pitch),
-                            style = MaterialTheme.typography.labelSmall
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                         )
+                    }
+                    IconButton(onClick = { showPitchDialog = true }) {
+                        Icon(Icons.Default.Edit, contentDescription = "Edit Pitch")
                     }
                 }
             }
@@ -1751,117 +1864,35 @@ private fun QuickEnhancementsRow(
 
     // Speed input dialog
     if (showSpeedDialog) {
-        ManualInputDialog(
+        FloatValueEditDialog(
             title = "Set Speed",
-            currentValue = speed,
-            minValue = 0.1f,
-            maxValue = 4.0f,
+            initialValue = speed,
+            valueRange = 0.1f..4.0f,
+            decimals = 2,
             suffix = "x",
             onDismiss = { showSpeedDialog = false },
-            onConfirm = { newValue ->
-                onSpeedChange(newValue)
+            onConfirm = {
                 showSpeedDialog = false
+                onSpeedChange(it)
             }
         )
     }
 
     // Pitch input dialog
     if (showPitchDialog) {
-        ManualInputDialog(
+        FloatValueEditDialog(
             title = "Set Pitch (semitones)",
-            currentValue = pitch,
-            minValue = -24f,
-            maxValue = 24f,
+            initialValue = pitch,
+            valueRange = -24f..24f,
+            decimals = 1,
             suffix = " st",
             onDismiss = { showPitchDialog = false },
-            onConfirm = { newValue ->
-                onPitchChange(newValue)
+            onConfirm = {
                 showPitchDialog = false
+                onPitchChange(it)
             }
         )
     }
-}
-
-// Manual input dialog for numeric values
-@Composable
-private fun ManualInputDialog(
-    title: String,
-    currentValue: Float,
-    minValue: Float,
-    maxValue: Float,
-    suffix: String,
-    onDismiss: () -> Unit,
-    onConfirm: (Float) -> Unit
-) {
-    var textValue by remember { mutableStateOf(String.format("%.2f", currentValue)) }
-    var isError by remember { mutableStateOf(false) }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(title) },
-        text = {
-            Column {
-                OutlinedTextField(
-                    value = textValue,
-                    onValueChange = { newValue ->
-                        textValue = newValue
-                        val parsed = newValue.toFloatOrNull()
-                        isError = parsed == null || parsed < minValue || parsed > maxValue
-                    },
-                    label = { Text("Value ($minValue to $maxValue)") },
-                    suffix = { Text(suffix) },
-                    isError = isError,
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    modifier = Modifier.fillMaxWidth()
-                )
-                if (isError) {
-                    Text(
-                        text = "Enter a value between $minValue and $maxValue",
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.padding(top = 4.dp)
-                    )
-                }
-                // Quick adjustment buttons
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 12.dp),
-                    horizontalArrangement = Arrangement.SpaceEvenly
-                ) {
-                    listOf(-1f, -0.1f, +0.1f, +1f).forEach { delta ->
-                        OutlinedButton(
-                            onClick = {
-                                val current = textValue.toFloatOrNull() ?: currentValue
-                                val newVal = (current + delta).coerceIn(minValue, maxValue)
-                                textValue = String.format("%.2f", newVal)
-                                isError = false
-                            },
-                            contentPadding = PaddingValues(horizontal = 8.dp)
-                        ) {
-                            Text(if (delta > 0) "+${delta}" else "$delta")
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = {
-                    textValue.toFloatOrNull()?.let { onConfirm(it.coerceIn(minValue, maxValue)) }
-                },
-                enabled = !isError && textValue.toFloatOrNull() != null
-            ) {
-                Text("Apply")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
-            }
-        }
-    )
 }
 
 // ==================== UTILITIES ====================

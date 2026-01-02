@@ -37,6 +37,7 @@ import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.LocalFireDepartment
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Power
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.SpatialAudio
@@ -83,6 +84,8 @@ import androidx.compose.ui.unit.sp
 import com.ultramusic.player.audio.BattleMode
 import com.ultramusic.player.audio.EQBand
 import com.ultramusic.player.ui.MainViewModel
+import com.ultramusic.player.ui.components.FloatValueEditDialog
+import com.ultramusic.player.ui.components.IntValueEditDialog
 
 /**
  * Audio Battle Screen
@@ -524,6 +527,20 @@ private fun BattleControlCard(
     warningThreshold: Int = maxValue + 1
 ) {
     val isWarning = value >= warningThreshold
+    var showEditDialog by remember { mutableStateOf(false) }
+
+    if (showEditDialog) {
+        IntValueEditDialog(
+            title = "Edit $title",
+            initialValue = value,
+            valueRange = 0..maxValue,
+            onDismiss = { showEditDialog = false },
+            onConfirm = {
+                showEditDialog = false
+                onValueChange(it.toFloat())
+            }
+        )
+    }
     
     Card(
         colors = CardDefaults.cardColors(
@@ -567,6 +584,12 @@ private fun BattleControlCard(
                         color = if (enabled) color else Color.Gray,
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
                     )
+                }
+
+                if (enabled) {
+                    IconButton(onClick = { showEditDialog = true }) {
+                        Icon(Icons.Default.Edit, contentDescription = "Edit $title", tint = color)
+                    }
                 }
             }
             
@@ -664,16 +687,37 @@ private fun EQBandSlider(
         4 -> Color(0xFF2196F3)  // High - blue
         else -> Color.Gray
     }
+
+    var showEditDialog by remember { mutableStateOf(false) }
+
+    if (showEditDialog) {
+        IntValueEditDialog(
+            title = "Edit ${band.frequencyLabel}",
+            initialValue = band.currentLevel,
+            valueRange = band.minLevel..band.maxLevel,
+            onDismiss = { showEditDialog = false },
+            onConfirm = {
+                showEditDialog = false
+                onValueChange(it)
+            }
+        )
+    }
     
     Column(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // Level indicator
-        Text(
-            text = "${band.levelDb.toInt()}dB",
-            style = MaterialTheme.typography.labelSmall,
-            color = if (enabled) color else Color.Gray
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = "${band.levelDb.toInt()}dB",
+                style = MaterialTheme.typography.labelSmall,
+                color = if (enabled) color else Color.Gray
+            )
+            if (enabled) {
+                IconButton(onClick = { showEditDialog = true }) {
+                    Icon(Icons.Default.Edit, contentDescription = "Edit ${band.frequencyLabel}", tint = color)
+                }
+            }
+        }
         
         // Vertical slider
         Box(
@@ -742,6 +786,37 @@ private fun BassControlCard(
 ) {
     var expanded by remember { mutableStateOf(false) }
     val color = Color(0xFFE91E63)
+    var showBassEditDialog by remember { mutableStateOf(false) }
+    var showFreqEditDialog by remember { mutableStateOf(false) }
+
+    if (showBassEditDialog) {
+        IntValueEditDialog(
+            title = "Edit Bass Boost",
+            initialValue = bassLevel / 10,
+            valueRange = 0..100,
+            suffix = "%",
+            onDismiss = { showBassEditDialog = false },
+            onConfirm = {
+                showBassEditDialog = false
+                onBassChange((it * 10).toFloat())
+            }
+        )
+    }
+
+    if (showFreqEditDialog) {
+        FloatValueEditDialog(
+            title = "Edit Bass Frequency",
+            initialValue = bassFrequency,
+            valueRange = 20f..200f,
+            decimals = 0,
+            suffix = "Hz",
+            onDismiss = { showFreqEditDialog = false },
+            onConfirm = {
+                showFreqEditDialog = false
+                onFrequencyChange(it)
+            }
+        )
+    }
 
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
@@ -784,6 +859,11 @@ private fun BassControlCard(
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
                     )
                 }
+                if (enabled) {
+                    IconButton(onClick = { showBassEditDialog = true }) {
+                        Icon(Icons.Default.Edit, contentDescription = "Edit Bass Boost", tint = color)
+                    }
+                }
                 Icon(
                     if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
                     contentDescription = null,
@@ -812,11 +892,22 @@ private fun BassControlCard(
                     Spacer(modifier = Modifier.height(8.dp))
 
                     // Frequency selection
-                    Text(
-                        "Center Frequency: ${bassFrequency.toInt()}Hz",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Color.Gray
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "Center Frequency: ${bassFrequency.toInt()}Hz",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.Gray
+                        )
+                        if (enabled) {
+                            IconButton(onClick = { showFreqEditDialog = true }) {
+                                Icon(Icons.Default.Edit, contentDescription = "Edit Bass Frequency", tint = color.copy(alpha = 0.7f))
+                            }
+                        }
+                    }
                     Slider(
                         value = bassFrequency,
                         onValueChange = onFrequencyChange,
@@ -1117,11 +1208,26 @@ private fun StereoWidenerCard(
     onWidthChange: (Int) -> Unit
 ) {
     val color = Color(0xFF9C27B0)
+    var showWidthEditDialog by remember { mutableStateOf(false) }
     val widthLabel = when {
         width < 80 -> "Mono"
         width < 120 -> "Normal"
         width < 160 -> "Wide"
         else -> "Ultra Wide"
+    }
+
+    if (showWidthEditDialog) {
+        IntValueEditDialog(
+            title = "Edit Stereo Width",
+            initialValue = width,
+            valueRange = 0..200,
+            suffix = "%",
+            onDismiss = { showWidthEditDialog = false },
+            onConfirm = {
+                showWidthEditDialog = false
+                onWidthChange(it)
+            }
+        )
     }
 
     Card(
@@ -1167,7 +1273,18 @@ private fun StereoWidenerCard(
             if (stereoEnabled) {
                 Spacer(modifier = Modifier.height(12.dp))
 
-                Text("Stereo Width", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Stereo Width", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                    if (enabled) {
+                        IconButton(onClick = { showWidthEditDialog = true }) {
+                            Icon(Icons.Default.Edit, contentDescription = "Edit Stereo Width", tint = color)
+                        }
+                    }
+                }
                 Slider(
                     value = width.toFloat(),
                     onValueChange = { onWidthChange(it.toInt()) },
@@ -1202,6 +1319,36 @@ private fun ExciterCard(
 ) {
     var expanded by remember { mutableStateOf(false) }
     val color = Color(0xFFFF9800)
+    var showDriveEditDialog by remember { mutableStateOf(false) }
+    var showMixEditDialog by remember { mutableStateOf(false) }
+
+    if (showDriveEditDialog) {
+        IntValueEditDialog(
+            title = "Edit Exciter Drive",
+            initialValue = drive,
+            valueRange = 0..100,
+            suffix = "%",
+            onDismiss = { showDriveEditDialog = false },
+            onConfirm = {
+                showDriveEditDialog = false
+                onDriveChange(it)
+            }
+        )
+    }
+
+    if (showMixEditDialog) {
+        IntValueEditDialog(
+            title = "Edit Exciter Mix",
+            initialValue = mix,
+            valueRange = 0..100,
+            suffix = "%",
+            onDismiss = { showMixEditDialog = false },
+            onConfirm = {
+                showMixEditDialog = false
+                onMixChange(it)
+            }
+        )
+    }
 
     Card(
         colors = CardDefaults.cardColors(
@@ -1259,7 +1406,18 @@ private fun ExciterCard(
                     Spacer(modifier = Modifier.height(12.dp))
 
                     // Drive
-                    Text("Drive: $drive%", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Drive: $drive%", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                        if (enabled) {
+                            IconButton(onClick = { showDriveEditDialog = true }) {
+                                Icon(Icons.Default.Edit, contentDescription = "Edit Drive", tint = color)
+                            }
+                        }
+                    }
                     Slider(
                         value = drive.toFloat(),
                         onValueChange = { onDriveChange(it.toInt()) },
@@ -1271,7 +1429,18 @@ private fun ExciterCard(
                     Spacer(modifier = Modifier.height(8.dp))
 
                     // Mix
-                    Text("Mix (Dry/Wet): $mix%", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Mix (Dry/Wet): $mix%", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                        if (enabled) {
+                            IconButton(onClick = { showMixEditDialog = true }) {
+                                Icon(Icons.Default.Edit, contentDescription = "Edit Mix", tint = color)
+                            }
+                        }
+                    }
                     Slider(
                         value = mix.toFloat(),
                         onValueChange = { onMixChange(it.toInt()) },
@@ -1374,6 +1543,23 @@ private fun ParameterSlider(
     onValueChange: (Float) -> Unit,
     explanation: String? = null
 ) {
+    var showEditDialog by remember { mutableStateOf(false) }
+
+    if (showEditDialog) {
+        FloatValueEditDialog(
+            title = "Edit $label",
+            initialValue = value,
+            valueRange = valueRange,
+            decimals = 1,
+            suffix = unit,
+            onDismiss = { showEditDialog = false },
+            onConfirm = {
+                showEditDialog = false
+                onValueChange(it)
+            }
+        )
+    }
+
     Column(modifier = Modifier.padding(vertical = 4.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -1403,6 +1589,12 @@ private fun ParameterSlider(
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                 )
+            }
+
+            if (enabled) {
+                IconButton(onClick = { showEditDialog = true }) {
+                    Icon(Icons.Default.Edit, contentDescription = "Edit $label", tint = color)
+                }
             }
         }
 

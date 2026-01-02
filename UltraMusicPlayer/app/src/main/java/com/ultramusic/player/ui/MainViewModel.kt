@@ -1926,7 +1926,7 @@ class MainViewModel @Inject constructor(
         viewModelScope.launch {
             val songs = _uiState.value.songs
             val folderMap = songs.groupBy { song ->
-                song.path.substringBeforeLast("/")
+                folderRepository.toFolderKey(song.path)
             }
 
             val folderItems = folderMap.map { (path, songsInFolder) ->
@@ -2001,9 +2001,7 @@ class MainViewModel @Inject constructor(
      * Play all songs in a folder
      */
     fun playEnhancedFolder(folder: FolderItem) {
-        val songs = _uiState.value.songs.filter { song ->
-            song.path.startsWith(folder.path)
-        }
+        val songs = folderRepository.getAllSongsInFolder(folder.path)
         if (songs.isNotEmpty()) {
             musicController.playSong(songs.first(), songs)
         }

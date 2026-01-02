@@ -48,6 +48,15 @@ class FolderRepository @Inject constructor(
     
     private var allSongs: List<Song> = emptyList()
     private var folderMap: Map<String, List<Song>> = emptyMap()
+
+    /**
+     * Convert a raw filesystem path (like MediaStore.DATA) into the internal
+     * folder key used by this repository (a storage-agnostic, simplified path).
+     *
+     * Example:
+     * - /storage/emulated/0/Music/Rock/song.mp3 -> Music/Rock
+     */
+    fun toFolderKey(filePath: String): String = getSimplifiedFolderPath(filePath)
     
     /**
      * Scan all music and organize by folders

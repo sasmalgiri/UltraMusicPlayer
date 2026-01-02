@@ -21,6 +21,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -35,6 +36,10 @@ import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -161,6 +166,23 @@ private fun SpeedSliderControl(
         else -> MaterialTheme.colorScheme.primary
     }
 
+    var showEditDialog by androidx.compose.runtime.remember { mutableStateOf(false) }
+
+    if (showEditDialog) {
+        FloatValueEditDialog(
+            title = "Edit Speed",
+            initialValue = speed,
+            valueRange = UltraMusicApp.MIN_SPEED..UltraMusicApp.MAX_SPEED,
+            decimals = 2,
+            suffix = "x",
+            onDismiss = { showEditDialog = false },
+            onConfirm = {
+                showEditDialog = false
+                onSpeedChange(it)
+            }
+        )
+    }
+
     Column {
         // Label
         Text(
@@ -198,16 +220,14 @@ private fun SpeedSliderControl(
             )
         }
 
-        // CURRENT VALUE - Always visible, centered, prominent
-        Box(
+        // Current value + edit button
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(
-                    speedColor.copy(alpha = 0.15f),
-                    RoundedCornerShape(8.dp)
-                )
-                .padding(vertical = 8.dp),
-            contentAlignment = Alignment.Center
+                .background(speedColor.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Text(
                 text = String.format("%.2fx", speed),
@@ -215,6 +235,9 @@ private fun SpeedSliderControl(
                 fontWeight = FontWeight.Bold,
                 color = speedColor
             )
+            IconButton(onClick = { showEditDialog = true }) {
+                Icon(Icons.Default.Edit, contentDescription = "Edit Speed", tint = speedColor)
+            }
         }
 
         Spacer(modifier = Modifier.height(8.dp))
@@ -245,6 +268,23 @@ private fun PitchSliderControl(
         pitch > 0f -> Color(0xFFE91E63)  // High - Pink
         pitch < 0f -> Color(0xFF9C27B0)  // Low - Purple
         else -> MaterialTheme.colorScheme.primary
+    }
+
+    var showEditDialog by androidx.compose.runtime.remember { mutableStateOf(false) }
+
+    if (showEditDialog) {
+        FloatValueEditDialog(
+            title = "Edit Pitch",
+            initialValue = pitch,
+            valueRange = UltraMusicApp.MIN_PITCH_SEMITONES..UltraMusicApp.MAX_PITCH_SEMITONES,
+            decimals = 1,
+            suffix = " semitones",
+            onDismiss = { showEditDialog = false },
+            onConfirm = {
+                showEditDialog = false
+                onPitchChange(it)
+            }
+        )
     }
 
     Column {
@@ -284,16 +324,14 @@ private fun PitchSliderControl(
             )
         }
 
-        // CURRENT VALUE - Always visible, centered, prominent
-        Box(
+        // Current value + edit button
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(
-                    pitchColor.copy(alpha = 0.15f),
-                    RoundedCornerShape(8.dp)
-                )
-                .padding(vertical = 8.dp),
-            contentAlignment = Alignment.Center
+                .background(pitchColor.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
             val sign = if (pitch > 0) "+" else ""
             Text(
@@ -302,6 +340,9 @@ private fun PitchSliderControl(
                 fontWeight = FontWeight.Bold,
                 color = pitchColor
             )
+            IconButton(onClick = { showEditDialog = true }) {
+                Icon(Icons.Default.Edit, contentDescription = "Edit Pitch", tint = pitchColor)
+            }
         }
 
         Spacer(modifier = Modifier.height(8.dp))
