@@ -471,9 +471,12 @@ private fun CompactNowPlayingSection(
     onClearLoop: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val scrollState = rememberScrollState()
+
     Column(
         modifier = modifier
             .fillMaxWidth()
+            .verticalScroll(scrollState)
             .padding(horizontal = 12.dp, vertical = 8.dp)
     ) {
         // Top row: Album art + Song info + Controls

@@ -14,6 +14,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -36,6 +38,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
@@ -75,6 +78,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -215,6 +221,8 @@ fun EasyPlayerScreen(
             onSetLoopA = { viewModel.setLoopStart() },
             onSetLoopB = { viewModel.setLoopEnd() },
             onClearLoop = { viewModel.clearLoop() },
+            onSetLoopAMs = { viewModel.setWaveformLoopStart(it) },
+            onSetLoopBMs = { viewModel.setWaveformLoopEnd(it) },
             onSpeedChange = { viewModel.setSpeed(it) },
             onPitchChange = { viewModel.setPitch(it) },
             onToggleShuffle = { viewModel.toggleShuffle() },
@@ -693,6 +701,8 @@ private fun NowPlayingSection(
     onSetLoopA: () -> Unit,
     onSetLoopB: () -> Unit,
     onClearLoop: () -> Unit,
+    onSetLoopAMs: (Long) -> Unit = {},
+    onSetLoopBMs: (Long) -> Unit = {},
     onSpeedChange: (Float) -> Unit,
     onPitchChange: (Float) -> Unit,
     onToggleShuffle: () -> Unit,
@@ -718,7 +728,8 @@ private fun NowPlayingSection(
     onAudiophileModeChange: (Boolean) -> Unit = {}
 ) {
     val currentSong = playbackState.currentSong
-    
+    val scrollState = rememberScrollState()
+
     Surface(
         color = MaterialTheme.colorScheme.surfaceVariant,
         tonalElevation = 8.dp,
@@ -727,6 +738,7 @@ private fun NowPlayingSection(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .verticalScroll(scrollState)
                 .padding(16.dp)
         ) {
             // Song info row
@@ -798,7 +810,7 @@ private fun NowPlayingSection(
             // Waveform with A-B markers
             WaveformWithABMarkers(
                 songPath = playbackState.currentSong?.path,
-                progress = if (playbackState.duration > 0) 
+                progress = if (playbackState.duration > 0)
                     playbackState.position.toFloat() / playbackState.duration else 0f,
                 duration = playbackState.duration,
                 position = playbackState.position,
@@ -809,7 +821,9 @@ private fun NowPlayingSection(
                 },
                 onSetLoopA = onSetLoopA,
                 onSetLoopB = onSetLoopB,
-                onClearLoop = onClearLoop
+                onClearLoop = onClearLoop,
+                onSetLoopAMs = onSetLoopAMs,
+                onSetLoopBMs = onSetLoopBMs
             )
             
             Spacer(modifier = Modifier.height(12.dp))
@@ -1325,10 +1339,14 @@ private fun WaveformWithABMarkers(
     onSeek: (Float) -> Unit,
     onSetLoopA: () -> Unit,
     onSetLoopB: () -> Unit,
-    onClearLoop: () -> Unit
+    onClearLoop: () -> Unit,
+    onSetLoopAMs: (Long) -> Unit = {},
+    onSetLoopBMs: (Long) -> Unit = {}
 ) {
     val loopColor = MaterialTheme.colorScheme.tertiary
-    
+    var showLoopADialog by remember { mutableStateOf(false) }
+    var showLoopBDialog by remember { mutableStateOf(false) }
+
     Column(modifier = Modifier.fillMaxWidth()) {
         // Time display
         Row(
@@ -1340,25 +1358,25 @@ private fun WaveformWithABMarkers(
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            
-            // A-B Loop status
+
+            // A-B Loop status (clickable to edit)
             if (loopStartPosition != null || loopEndPosition != null) {
                 Text(
-                    text = "🔁 Loop: ${formatTime(loopStartPosition ?: 0)} - ${formatTime(loopEndPosition ?: duration)}",
+                    text = "Loop: ${formatTime(loopStartPosition ?: 0)} - ${formatTime(loopEndPosition ?: duration)}",
                     style = MaterialTheme.typography.labelSmall,
                     color = loopColor
                 )
             }
-            
+
             Text(
                 text = formatTime(duration),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
-        
+
         Spacer(modifier = Modifier.height(8.dp))
-        
+
         // Real waveform visualization
         com.ultramusic.player.ui.components.WaveformView(
             audioPath = songPath,
@@ -1379,43 +1397,69 @@ private fun WaveformWithABMarkers(
             backgroundColor = MaterialTheme.colorScheme.surface,
             loopColor = loopColor
         )
-        
+
         Spacer(modifier = Modifier.height(8.dp))
-        
-        // A-B Loop buttons
+
+        // A-B Loop buttons with manual input
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Set A button
-            FilledTonalButton(
-                onClick = onSetLoopA,
-                modifier = Modifier.width(80.dp),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
-            ) {
-                Text(
-                    text = if (loopStartPosition != null) "A ✓" else "Set A",
-                    style = MaterialTheme.typography.labelMedium
-                )
+            // Set A button - tap to set at current position, long-press for manual input
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                FilledTonalButton(
+                    onClick = onSetLoopA,
+                    modifier = Modifier.width(80.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+                ) {
+                    Text(
+                        text = if (loopStartPosition != null) "A ✓" else "Set A",
+                        style = MaterialTheme.typography.labelMedium
+                    )
+                }
+                // Manual input button
+                TextButton(
+                    onClick = { showLoopADialog = true },
+                    contentPadding = PaddingValues(4.dp)
+                ) {
+                    Text(
+                        text = if (loopStartPosition != null) formatTime(loopStartPosition) else "Manual",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
             }
-            
-            Spacer(modifier = Modifier.width(16.dp))
-            
+
+            Spacer(modifier = Modifier.width(12.dp))
+
             // Set B button
-            FilledTonalButton(
-                onClick = onSetLoopB,
-                modifier = Modifier.width(80.dp),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
-            ) {
-                Text(
-                    text = if (loopEndPosition != null) "B ✓" else "Set B",
-                    style = MaterialTheme.typography.labelMedium
-                )
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                FilledTonalButton(
+                    onClick = onSetLoopB,
+                    modifier = Modifier.width(80.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+                ) {
+                    Text(
+                        text = if (loopEndPosition != null) "B ✓" else "Set B",
+                        style = MaterialTheme.typography.labelMedium
+                    )
+                }
+                // Manual input button
+                TextButton(
+                    onClick = { showLoopBDialog = true },
+                    contentPadding = PaddingValues(4.dp)
+                ) {
+                    Text(
+                        text = if (loopEndPosition != null) formatTime(loopEndPosition) else "Manual",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
             }
-            
-            Spacer(modifier = Modifier.width(16.dp))
-            
+
+            Spacer(modifier = Modifier.width(12.dp))
+
             // Clear loop button
             if (loopStartPosition != null || loopEndPosition != null) {
                 FilledTonalButton(
@@ -1427,6 +1471,166 @@ private fun WaveformWithABMarkers(
             }
         }
     }
+
+    // Loop A time input dialog
+    if (showLoopADialog) {
+        TimeInputDialog(
+            title = "Set Loop A Position",
+            currentTimeMs = loopStartPosition ?: position,
+            maxTimeMs = duration,
+            onDismiss = { showLoopADialog = false },
+            onConfirm = { timeMs ->
+                onSetLoopAMs(timeMs)
+                showLoopADialog = false
+            }
+        )
+    }
+
+    // Loop B time input dialog
+    if (showLoopBDialog) {
+        TimeInputDialog(
+            title = "Set Loop B Position",
+            currentTimeMs = loopEndPosition ?: position,
+            maxTimeMs = duration,
+            onDismiss = { showLoopBDialog = false },
+            onConfirm = { timeMs ->
+                onSetLoopBMs(timeMs)
+                showLoopBDialog = false
+            }
+        )
+    }
+}
+
+// Time input dialog for loop positions (mm:ss format)
+@Composable
+private fun TimeInputDialog(
+    title: String,
+    currentTimeMs: Long,
+    maxTimeMs: Long,
+    onDismiss: () -> Unit,
+    onConfirm: (Long) -> Unit
+) {
+    val currentMinutes = (currentTimeMs / 1000 / 60).toInt()
+    val currentSeconds = ((currentTimeMs / 1000) % 60).toInt()
+
+    var minutes by remember { mutableStateOf(currentMinutes.toString()) }
+    var seconds by remember { mutableStateOf(currentSeconds.toString().padStart(2, '0')) }
+    var isError by remember { mutableStateOf(false) }
+
+    fun getTimeMs(): Long? {
+        val m = minutes.toIntOrNull() ?: return null
+        val s = seconds.toIntOrNull() ?: return null
+        if (m < 0 || s < 0 || s >= 60) return null
+        val totalMs = (m * 60L + s) * 1000L
+        if (totalMs > maxTimeMs) return null
+        return totalMs
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Column {
+                Text(
+                    text = "Enter time in mm:ss format",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 12.dp)
+                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    // Minutes input
+                    OutlinedTextField(
+                        value = minutes,
+                        onValueChange = { newValue ->
+                            if (newValue.length <= 3 && newValue.all { it.isDigit() }) {
+                                minutes = newValue
+                                isError = getTimeMs() == null
+                            }
+                        },
+                        label = { Text("Min") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.width(80.dp),
+                        isError = isError
+                    )
+
+                    Text(
+                        text = ":",
+                        style = MaterialTheme.typography.headlineMedium,
+                        modifier = Modifier.padding(horizontal = 8.dp)
+                    )
+
+                    // Seconds input
+                    OutlinedTextField(
+                        value = seconds,
+                        onValueChange = { newValue ->
+                            if (newValue.length <= 2 && newValue.all { it.isDigit() }) {
+                                seconds = newValue
+                                isError = getTimeMs() == null
+                            }
+                        },
+                        label = { Text("Sec") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.width(80.dp),
+                        isError = isError
+                    )
+                }
+
+                if (isError) {
+                    Text(
+                        text = "Invalid time (max: ${formatTime(maxTimeMs)})",
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                }
+
+                // Quick time buttons
+                Text(
+                    text = "Quick set:",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 12.dp, bottom = 4.dp)
+                )
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    val quickTimes = listOf(0L, 30000L, 60000L, 120000L, 180000L)
+                        .filter { it <= maxTimeMs }
+                    items(quickTimes) { timeMs ->
+                        OutlinedButton(
+                            onClick = {
+                                minutes = (timeMs / 1000 / 60).toString()
+                                seconds = ((timeMs / 1000) % 60).toString().padStart(2, '0')
+                                isError = false
+                            },
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Text(formatTime(timeMs), style = MaterialTheme.typography.labelSmall)
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    getTimeMs()?.let { onConfirm(it) }
+                },
+                enabled = !isError && getTimeMs() != null
+            ) {
+                Text("Set")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
 }
 
 // ==================== QUICK ENHANCEMENTS ====================
@@ -1440,82 +1644,224 @@ private fun QuickEnhancementsRow(
     onPitchChange: (Float) -> Unit,
     onClearLoop: () -> Unit
 ) {
-    LazyRow(
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        contentPadding = PaddingValues(horizontal = 4.dp)
-    ) {
-        // Speed presets
-        item {
-            Text(
-                text = "Speed:",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(end = 4.dp, top = 8.dp)
-            )
-        }
-        
-        val speedPresets = listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f)
-        items(speedPresets) { preset ->
-            FilterChip(
-                selected = speed == preset,
-                onClick = { onSpeedChange(preset) },
-                label = { Text("${preset}x") }
-            )
-        }
-        
-        // Divider
-        item { Spacer(modifier = Modifier.width(8.dp)) }
-        
-        // Pitch presets
-        item {
-            Text(
-                text = "Pitch:",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(end = 4.dp, top = 8.dp)
-            )
-        }
-        
-        val pitchPresets = listOf(-12f, -6f, 0f, 6f, 12f)
-        items(pitchPresets) { preset ->
-            FilterChip(
-                selected = pitch == preset,
-                onClick = { onPitchChange(preset) },
-                label = { 
+    var showSpeedDialog by remember { mutableStateOf(false) }
+    var showPitchDialog by remember { mutableStateOf(false) }
+
+    Column {
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            contentPadding = PaddingValues(horizontal = 4.dp)
+        ) {
+            // Speed section with manual input
+            item {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        if (preset == 0f) "0" 
-                        else if (preset > 0) "+${preset.toInt()}" 
-                        else "${preset.toInt()}"
-                    ) 
+                        text = "Speed:",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(end = 4.dp)
+                    )
+                    // Manual input button showing current value
+                    OutlinedButton(
+                        onClick = { showSpeedDialog = true },
+                        modifier = Modifier.height(32.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp)
+                    ) {
+                        Text("${String.format("%.2f", speed)}x", style = MaterialTheme.typography.labelSmall)
+                    }
                 }
-            )
-        }
-        
-        // Quick presets
-        item { Spacer(modifier = Modifier.width(8.dp)) }
-        
-        item {
-            FilterChip(
-                selected = speed == 1.25f && pitch == 4f,
-                onClick = { 
-                    onSpeedChange(1.25f)
-                    onPitchChange(4f)
-                },
-                label = { Text("🌙 Nightcore") }
-            )
-        }
-        
-        item {
-            FilterChip(
-                selected = speed == 0.85f && pitch == -2f,
-                onClick = { 
-                    onSpeedChange(0.85f)
-                    onPitchChange(-2f)
-                },
-                label = { Text("🎧 Slowed") }
-            )
+            }
+
+            val speedPresets = listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f)
+            items(speedPresets) { preset ->
+                FilterChip(
+                    selected = speed == preset,
+                    onClick = { onSpeedChange(preset) },
+                    label = { Text("${preset}x") }
+                )
+            }
+
+            // Divider
+            item { Spacer(modifier = Modifier.width(8.dp)) }
+
+            // Pitch section with manual input
+            item {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "Pitch:",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(end = 4.dp)
+                    )
+                    // Manual input button showing current value
+                    OutlinedButton(
+                        onClick = { showPitchDialog = true },
+                        modifier = Modifier.height(32.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp)
+                    ) {
+                        Text(
+                            if (pitch >= 0) "+${String.format("%.1f", pitch)}" else String.format("%.1f", pitch),
+                            style = MaterialTheme.typography.labelSmall
+                        )
+                    }
+                }
+            }
+
+            val pitchPresets = listOf(-12f, -6f, 0f, 6f, 12f)
+            items(pitchPresets) { preset ->
+                FilterChip(
+                    selected = pitch == preset,
+                    onClick = { onPitchChange(preset) },
+                    label = {
+                        Text(
+                            if (preset == 0f) "0"
+                            else if (preset > 0) "+${preset.toInt()}"
+                            else "${preset.toInt()}"
+                        )
+                    }
+                )
+            }
+
+            // Quick presets
+            item { Spacer(modifier = Modifier.width(8.dp)) }
+
+            item {
+                FilterChip(
+                    selected = speed == 1.25f && pitch == 4f,
+                    onClick = {
+                        onSpeedChange(1.25f)
+                        onPitchChange(4f)
+                    },
+                    label = { Text("Nightcore") }
+                )
+            }
+
+            item {
+                FilterChip(
+                    selected = speed == 0.85f && pitch == -2f,
+                    onClick = {
+                        onSpeedChange(0.85f)
+                        onPitchChange(-2f)
+                    },
+                    label = { Text("Slowed") }
+                )
+            }
         }
     }
+
+    // Speed input dialog
+    if (showSpeedDialog) {
+        ManualInputDialog(
+            title = "Set Speed",
+            currentValue = speed,
+            minValue = 0.1f,
+            maxValue = 4.0f,
+            suffix = "x",
+            onDismiss = { showSpeedDialog = false },
+            onConfirm = { newValue ->
+                onSpeedChange(newValue)
+                showSpeedDialog = false
+            }
+        )
+    }
+
+    // Pitch input dialog
+    if (showPitchDialog) {
+        ManualInputDialog(
+            title = "Set Pitch (semitones)",
+            currentValue = pitch,
+            minValue = -24f,
+            maxValue = 24f,
+            suffix = " st",
+            onDismiss = { showPitchDialog = false },
+            onConfirm = { newValue ->
+                onPitchChange(newValue)
+                showPitchDialog = false
+            }
+        )
+    }
+}
+
+// Manual input dialog for numeric values
+@Composable
+private fun ManualInputDialog(
+    title: String,
+    currentValue: Float,
+    minValue: Float,
+    maxValue: Float,
+    suffix: String,
+    onDismiss: () -> Unit,
+    onConfirm: (Float) -> Unit
+) {
+    var textValue by remember { mutableStateOf(String.format("%.2f", currentValue)) }
+    var isError by remember { mutableStateOf(false) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = textValue,
+                    onValueChange = { newValue ->
+                        textValue = newValue
+                        val parsed = newValue.toFloatOrNull()
+                        isError = parsed == null || parsed < minValue || parsed > maxValue
+                    },
+                    label = { Text("Value ($minValue to $maxValue)") },
+                    suffix = { Text(suffix) },
+                    isError = isError,
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                if (isError) {
+                    Text(
+                        text = "Enter a value between $minValue and $maxValue",
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+                // Quick adjustment buttons
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    listOf(-1f, -0.1f, +0.1f, +1f).forEach { delta ->
+                        OutlinedButton(
+                            onClick = {
+                                val current = textValue.toFloatOrNull() ?: currentValue
+                                val newVal = (current + delta).coerceIn(minValue, maxValue)
+                                textValue = String.format("%.2f", newVal)
+                                isError = false
+                            },
+                            contentPadding = PaddingValues(horizontal = 8.dp)
+                        ) {
+                            Text(if (delta > 0) "+${delta}" else "$delta")
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    textValue.toFloatOrNull()?.let { onConfirm(it.coerceIn(minValue, maxValue)) }
+                },
+                enabled = !isError && textValue.toFloatOrNull() != null
+            ) {
+                Text("Apply")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
 }
 
 // ==================== UTILITIES ====================
