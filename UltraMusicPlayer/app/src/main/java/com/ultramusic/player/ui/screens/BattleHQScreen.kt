@@ -1,3 +1,5 @@
+@file:androidx.media3.common.util.UnstableApi
+
 package com.ultramusic.player.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility

@@ -1,3 +1,5 @@
+@file:androidx.media3.common.util.UnstableApi
+
 package com.ultramusic.player
 
 import android.Manifest

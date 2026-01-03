@@ -9,7 +9,5 @@
     <device-transfer>
         <!-- Allow device-to-device transfer of non-sensitive data only -->
         <include domain="sharedpref" path="user_preferences.xml" />
-        <exclude domain="sharedpref" path="ai_settings.xml" />
-        <exclude domain="sharedpref" path="." />
     </device-transfer>
 </data-extraction-rules>

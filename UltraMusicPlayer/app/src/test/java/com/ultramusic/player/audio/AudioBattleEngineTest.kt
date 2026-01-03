@@ -21,10 +21,16 @@ class AudioBattleEngineTest {
 
     private lateinit var battleEngine: AudioBattleEngine
     private val mockContext: Context = mockk(relaxed = true)
+    private val gainStagingManager = GainStagingManager()
+    private val mockNativeBattleEngine: NativeBattleEngine = mockk(relaxed = true)
 
     @Before
     fun setup() {
-        battleEngine = AudioBattleEngine(mockContext)
+        battleEngine = AudioBattleEngine(
+            context = mockContext,
+            gainStagingManager = gainStagingManager,
+            nativeBattleEngine = mockNativeBattleEngine
+        )
     }
 
     // ==================== INITIAL STATE TESTS ====================
