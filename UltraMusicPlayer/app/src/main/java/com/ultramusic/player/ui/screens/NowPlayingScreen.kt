@@ -320,6 +320,9 @@ fun NowPlayingScreen(
                         onSetLoopStart = { viewModel.setABLoopStart() },
                         onSetLoopEnd = { viewModel.setABLoopEnd() },
                         onClearLoop = { viewModel.clearABLoop() },
+                        onSetManualLoopPoints = { startMs, endMs ->
+                            viewModel.setManualLoopPoints(startMs, endMs)
+                        },
                         onSaveToArmory = {
                             playbackState.currentSong?.let { currentSong ->
                                 val start = playbackState.abLoopStart ?: 0

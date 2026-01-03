@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -45,8 +46,12 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Fill
+import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -73,6 +78,7 @@ fun MusicSpeedChangerWaveform(
     onLoopStartChange: (Long) -> Unit,
     onLoopEndChange: (Long) -> Unit,
     onClearLoop: () -> Unit,
+    lockPlayheadToCenter: Boolean = true,
     modifier: Modifier = Modifier,
     height: Dp = 100.dp,
     barColor: Color = Color(0xFF4FC3F7),       // Light blue for unplayed
@@ -115,7 +121,8 @@ fun MusicSpeedChangerWaveform(
                     .background(Color.Transparent)
             ) {
                 // Calculate offset for the timestamp pill
-                val offsetFraction = displayPosition.coerceIn(0.05f, 0.95f)
+                val offsetFraction = (if (lockPlayheadToCenter) 0.5f else displayPosition)
+                    .coerceIn(0.05f, 0.95f)
 
                 Box(
                     modifier = Modifier
@@ -148,14 +155,27 @@ fun MusicSpeedChangerWaveform(
                     .background(backgroundColor, RoundedCornerShape(12.dp))
                     .pointerInput(Unit) {
                         detectTapGestures { offset ->
-                            val pos = (offset.x / size.width).coerceIn(0f, 1f)
+                            val displayPos = if (isDraggingPlayhead) dragPosition else currentPosition
+                            val translateX = if (lockPlayheadToCenter) {
+                                (0.5f - displayPos) * size.width
+                            } else {
+                                0f
+                            }
+
+                            val pos = ((offset.x - translateX) / size.width).coerceIn(0f, 1f)
                             onSeek(pos)
                         }
                     }
-                    .pointerInput(loopStartMs, loopEndMs, currentPosition) {
+                    .pointerInput(loopStartMs, loopEndMs, currentPosition, lockPlayheadToCenter) {
                         detectDragGestures(
                             onDragStart = { offset ->
-                                val pos = offset.x / size.width
+                                val translateX = if (lockPlayheadToCenter) {
+                                    (0.5f - currentPosition) * size.width
+                                } else {
+                                    0f
+                                }
+
+                                val pos = ((offset.x - translateX) / size.width).coerceIn(0f, 1f)
                                 val distToA = if (loopStartMs != null) abs(pos - loopStartPos) else 1f
                                 val distToB = if (loopEndMs != null) abs(pos - loopEndPos) else 1f
                                 val distToPlayhead = abs(pos - currentPosition)
@@ -172,13 +192,24 @@ fun MusicSpeedChangerWaveform(
                                     // Playhead is draggable anywhere else
                                     else -> {
                                         isDraggingPlayhead = true
-                                        dragPosition = pos.coerceIn(0f, 1f)
-                                        onSeek(dragPosition)
+
+                                        if (lockPlayheadToCenter) {
+                                            dragPosition = currentPosition
+                                        } else {
+                                            dragPosition = pos
+                                            onSeek(dragPosition)
+                                        }
                                     }
                                 }
                             },
-                            onDrag = { change, _ ->
-                                val pos = (change.position.x / size.width).coerceIn(0f, 1f)
+                            onDrag = { change, dragAmount ->
+                                val translateX = if (lockPlayheadToCenter) {
+                                    (0.5f - (if (isDraggingPlayhead) dragPosition else currentPosition)) * size.width
+                                } else {
+                                    0f
+                                }
+
+                                val pos = ((change.position.x - translateX) / size.width).coerceIn(0f, 1f)
                                 when {
                                     isDraggingA -> {
                                         val maxPos = if (loopEndMs != null) loopEndPos - 0.01f else 1f
@@ -191,8 +222,14 @@ fun MusicSpeedChangerWaveform(
                                         onLoopEndChange((newPos * durationMs).toLong())
                                     }
                                     isDraggingPlayhead -> {
-                                        dragPosition = pos
-                                        onSeek(pos)
+                                        if (lockPlayheadToCenter) {
+                                            val deltaPos = (-dragAmount.x / size.width)
+                                            dragPosition = (dragPosition + deltaPos).coerceIn(0f, 1f)
+                                            onSeek(dragPosition)
+                                        } else {
+                                            dragPosition = pos
+                                            onSeek(pos)
+                                        }
                                     }
                                 }
                             },
@@ -208,6 +245,13 @@ fun MusicSpeedChangerWaveform(
                 val canvasHeight = size.height
                 val centerY = canvasHeight / 2
 
+                val displayPos = if (isDraggingPlayhead) dragPosition else currentPosition
+                val translateX = if (lockPlayheadToCenter) {
+                    (0.5f - displayPos) * canvasWidth
+                } else {
+                    0f
+                }
+
                 // Number of bars to draw
                 val numBars = if (waveformData.isNotEmpty()) waveformData.size else 100
                 val barWidth = canvasWidth / numBars
@@ -215,127 +259,131 @@ fun MusicSpeedChangerWaveform(
                 val actualBarWidth = (barWidth - barGap).coerceAtLeast(2.dp.toPx())
                 val cornerRadius = actualBarWidth / 2
 
-                // Draw loop region background
-                if (loopStartMs != null && loopEndMs != null) {
-                    val startX = loopStartPos * canvasWidth
-                    val endX = loopEndPos * canvasWidth
-                    drawRect(
-                        color = loopRegionColor.copy(alpha = 0.2f),
-                        topLeft = Offset(startX, 0f),
-                        size = Size(endX - startX, canvasHeight)
-                    )
-                }
-
-                // Draw waveform bars
-                for (i in 0 until numBars) {
-                    val amplitude = if (waveformData.isNotEmpty()) {
-                        waveformData.getOrElse(i) { 0.3f }
-                    } else {
-                        // Generate fake waveform if no data
-                        0.3f + (kotlin.math.sin(i * 0.15f) * 0.3f) + (kotlin.random.Random.nextFloat() * 0.2f)
+                withTransform({
+                    translate(left = translateX, top = 0f)
+                }) {
+                    // Draw loop region background
+                    if (loopStartMs != null && loopEndMs != null) {
+                        val startX = loopStartPos * canvasWidth
+                        val endX = loopEndPos * canvasWidth
+                        drawRect(
+                            color = loopRegionColor.copy(alpha = 0.2f),
+                            topLeft = Offset(startX, 0f),
+                            size = Size(endX - startX, canvasHeight)
+                        )
                     }
 
-                    val barHeight = (amplitude * (canvasHeight - 20.dp.toPx()) * 0.9f).coerceAtLeast(4.dp.toPx())
-                    val x = i * barWidth + barGap / 2
-                    val position = i.toFloat() / numBars
+                    // Draw waveform bars
+                    for (i in 0 until numBars) {
+                        val amplitude = if (waveformData.isNotEmpty()) {
+                            waveformData.getOrElse(i) { 0.3f }
+                        } else {
+                            // Generate fake waveform if no data
+                            0.3f + (kotlin.math.sin(i * 0.15f) * 0.3f) + (kotlin.random.Random.nextFloat() * 0.2f)
+                        }
 
-                    // Determine bar color
-                    val color = when {
-                        position <= currentPosition -> playedColor
-                        loopStartMs != null && loopEndMs != null &&
-                            position >= loopStartPos && position <= loopEndPos -> loopRegionColor.copy(alpha = 0.7f)
-                        else -> barColor.copy(alpha = 0.6f)
+                        val barHeight = (amplitude * (canvasHeight - 20.dp.toPx()) * 0.9f).coerceAtLeast(4.dp.toPx())
+                        val x = i * barWidth + barGap / 2
+                        val position = i.toFloat() / numBars
+
+                        // Determine bar color
+                        val color = when {
+                            position <= displayPos -> playedColor
+                            loopStartMs != null && loopEndMs != null &&
+                                position >= loopStartPos && position <= loopEndPos -> loopRegionColor.copy(alpha = 0.7f)
+                            else -> barColor.copy(alpha = 0.6f)
+                        }
+
+                        // Draw rounded bar (pill shape)
+                        drawRoundRect(
+                            color = color,
+                            topLeft = Offset(x, centerY - barHeight / 2),
+                            size = Size(actualBarWidth, barHeight),
+                            cornerRadius = CornerRadius(cornerRadius, cornerRadius)
+                        )
                     }
 
-                    // Draw rounded bar (pill shape)
-                    drawRoundRect(
-                        color = color,
-                        topLeft = Offset(x, centerY - barHeight / 2),
-                        size = Size(actualBarWidth, barHeight),
-                        cornerRadius = CornerRadius(cornerRadius, cornerRadius)
-                    )
-                }
+                    // Draw A marker (behind playhead)
+                    if (loopStartMs != null) {
+                        val aX = loopStartPos * canvasWidth
 
-                // Draw A marker (behind playhead)
-                if (loopStartMs != null) {
-                    val aX = loopStartPos * canvasWidth
+                        // A marker line
+                        drawLine(
+                            color = Color(0xFF00E5FF),
+                            start = Offset(aX, 0f),
+                            end = Offset(aX, canvasHeight),
+                            strokeWidth = 3.dp.toPx()
+                        )
 
-                    // A marker line
-                    drawLine(
-                        color = Color(0xFF00E5FF),
-                        start = Offset(aX, 0f),
-                        end = Offset(aX, canvasHeight),
-                        strokeWidth = 3.dp.toPx()
-                    )
+                        // A marker circle handle at top (larger for easier drag)
+                        drawCircle(
+                            color = Color(0xFF00E5FF),
+                            radius = 12.dp.toPx(),
+                            center = Offset(aX, 14.dp.toPx())
+                        )
+                        // Inner circle
+                        drawCircle(
+                            color = Color.White,
+                            radius = 6.dp.toPx(),
+                            center = Offset(aX, 14.dp.toPx())
+                        )
 
-                    // A marker circle handle at top (larger for easier drag)
-                    drawCircle(
-                        color = Color(0xFF00E5FF),
-                        radius = 12.dp.toPx(),
-                        center = Offset(aX, 14.dp.toPx())
-                    )
-                    // Inner circle
-                    drawCircle(
-                        color = Color.White,
-                        radius = 6.dp.toPx(),
-                        center = Offset(aX, 14.dp.toPx())
-                    )
+                        // A marker circle handle at bottom (larger for easier drag)
+                        drawCircle(
+                            color = Color(0xFF00E5FF),
+                            radius = 12.dp.toPx(),
+                            center = Offset(aX, canvasHeight - 14.dp.toPx())
+                        )
+                        // Inner circle
+                        drawCircle(
+                            color = Color.White,
+                            radius = 6.dp.toPx(),
+                            center = Offset(aX, canvasHeight - 14.dp.toPx())
+                        )
+                    }
 
-                    // A marker circle handle at bottom (larger for easier drag)
-                    drawCircle(
-                        color = Color(0xFF00E5FF),
-                        radius = 12.dp.toPx(),
-                        center = Offset(aX, canvasHeight - 14.dp.toPx())
-                    )
-                    // Inner circle
-                    drawCircle(
-                        color = Color.White,
-                        radius = 6.dp.toPx(),
-                        center = Offset(aX, canvasHeight - 14.dp.toPx())
-                    )
-                }
+                    // Draw B marker
+                    if (loopEndMs != null) {
+                        val bX = loopEndPos * canvasWidth
 
-                // Draw B marker
-                if (loopEndMs != null) {
-                    val bX = loopEndPos * canvasWidth
+                        // B marker line
+                        drawLine(
+                            color = Color(0xFFFFEA00),
+                            start = Offset(bX, 0f),
+                            end = Offset(bX, canvasHeight),
+                            strokeWidth = 3.dp.toPx()
+                        )
 
-                    // B marker line
-                    drawLine(
-                        color = Color(0xFFFFEA00),
-                        start = Offset(bX, 0f),
-                        end = Offset(bX, canvasHeight),
-                        strokeWidth = 3.dp.toPx()
-                    )
+                        // B marker circle handle at top (larger for easier drag)
+                        drawCircle(
+                            color = Color(0xFFFFEA00),
+                            radius = 12.dp.toPx(),
+                            center = Offset(bX, 14.dp.toPx())
+                        )
+                        // Inner circle
+                        drawCircle(
+                            color = Color.Black,
+                            radius = 6.dp.toPx(),
+                            center = Offset(bX, 14.dp.toPx())
+                        )
 
-                    // B marker circle handle at top (larger for easier drag)
-                    drawCircle(
-                        color = Color(0xFFFFEA00),
-                        radius = 12.dp.toPx(),
-                        center = Offset(bX, 14.dp.toPx())
-                    )
-                    // Inner circle
-                    drawCircle(
-                        color = Color.Black,
-                        radius = 6.dp.toPx(),
-                        center = Offset(bX, 14.dp.toPx())
-                    )
-
-                    // B marker circle handle at bottom (larger for easier drag)
-                    drawCircle(
-                        color = Color(0xFFFFEA00),
-                        radius = 12.dp.toPx(),
-                        center = Offset(bX, canvasHeight - 14.dp.toPx())
-                    )
-                    // Inner circle
-                    drawCircle(
-                        color = Color.Black,
-                        radius = 6.dp.toPx(),
-                        center = Offset(bX, canvasHeight - 14.dp.toPx())
-                    )
+                        // B marker circle handle at bottom (larger for easier drag)
+                        drawCircle(
+                            color = Color(0xFFFFEA00),
+                            radius = 12.dp.toPx(),
+                            center = Offset(bX, canvasHeight - 14.dp.toPx())
+                        )
+                        // Inner circle
+                        drawCircle(
+                            color = Color.Black,
+                            radius = 6.dp.toPx(),
+                            center = Offset(bX, canvasHeight - 14.dp.toPx())
+                        )
+                    }
                 }
 
                 // Draw playhead (current position) - ON TOP of markers
-                val playheadX = displayPosition * canvasWidth
+                val playheadX = if (lockPlayheadToCenter) canvasWidth / 2 else (displayPos * canvasWidth)
                 val playheadColor = if (isDraggingPlayhead) Color(0xFF00E676) else Color.White
 
                 // Playhead line (thicker for visibility)
@@ -419,13 +467,16 @@ private fun ABLoopControls(
     var isHoldingA by remember { mutableStateOf(false) }
     var isHoldingB by remember { mutableStateOf(false) }
 
-    Row(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 4.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
+            .padding(horizontal = 4.dp)
     ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
         // Loop time display with fine-tune controls
         if (loopStartMs != null && loopEndMs != null) {
             Column {
@@ -624,6 +675,144 @@ private fun ABLoopControls(
                 }
             }
         }
+
+        }
+
+        // Manual time edit (always clamped within valid range)
+        Spacer(modifier = Modifier.height(8.dp))
+
+        val safeDuration = durationMs.coerceAtLeast(0L)
+        val effectiveA = (loopStartMs ?: 0L).coerceIn(0L, safeDuration)
+        val effectiveB = (loopEndMs ?: safeDuration).coerceIn(0L, safeDuration)
+        val minGapMs = 1L
+
+        LoopPointEditorRowCompact(
+            label = "A",
+            valueMs = effectiveA,
+            minMs = 0L,
+            maxMs = (effectiveB - minGapMs).coerceAtLeast(0L),
+            onValueMsChange = { newA ->
+                val maxA = (effectiveB - minGapMs).coerceAtLeast(0L)
+                onLoopStartChange(newA.coerceIn(0L, maxA))
+            }
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        LoopPointEditorRowCompact(
+            label = "B",
+            valueMs = effectiveB,
+            minMs = (effectiveA + minGapMs).coerceAtMost(safeDuration),
+            maxMs = safeDuration,
+            onValueMsChange = { newB ->
+                val minB = (effectiveA + minGapMs).coerceAtMost(safeDuration)
+                onLoopEndChange(newB.coerceIn(minB, safeDuration))
+            }
+        )
+    }
+}
+
+@Composable
+private fun LoopPointEditorRowCompact(
+    label: String,
+    valueMs: Long,
+    minMs: Long,
+    maxMs: Long,
+    onValueMsChange: (Long) -> Unit
+) {
+    val safeMax = maxMs.coerceAtLeast(minMs)
+    val safeValue = valueMs.coerceIn(minMs, safeMax)
+
+    val minutes = (safeValue / 60000).toInt()
+    val seconds = ((safeValue % 60000) / 1000).toInt()
+    val millis = (safeValue % 1000).toInt()
+
+    var minText by remember(safeValue) { mutableStateOf(minutes.toString()) }
+    var secText by remember(safeValue) { mutableStateOf(seconds.toString().padStart(2, '0')) }
+    var msText by remember(safeValue) { mutableStateOf(millis.toString().padStart(3, '0')) }
+
+    fun tryUpdate() {
+        val m = minText.toIntOrNull() ?: return
+        val s = secText.toIntOrNull() ?: return
+        val ms = msText.toIntOrNull() ?: return
+        if (m < 0) return
+        if (s !in 0..59) return
+        if (ms !in 0..999) return
+        val newValue = (m * 60_000L) + (s * 1000L) + ms
+        onValueMsChange(newValue.coerceIn(minMs, safeMax))
+    }
+
+    Column {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.width(24.dp)
+            )
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedTextField(
+                    value = minText,
+                    onValueChange = {
+                        if (it.length <= 4 && it.all { ch -> ch.isDigit() }) {
+                            minText = it
+                            tryUpdate()
+                        }
+                    },
+                    singleLine = true,
+                    label = { Text("Min") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.width(84.dp)
+                )
+
+                Text(":", style = MaterialTheme.typography.titleLarge)
+
+                OutlinedTextField(
+                    value = secText,
+                    onValueChange = {
+                        if (it.length <= 2 && it.all { ch -> ch.isDigit() }) {
+                            secText = it
+                            tryUpdate()
+                        }
+                    },
+                    singleLine = true,
+                    label = { Text("Sec") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.width(84.dp)
+                )
+
+                Text(".", style = MaterialTheme.typography.titleLarge)
+
+                OutlinedTextField(
+                    value = msText,
+                    onValueChange = {
+                        if (it.length <= 3 && it.all { ch -> ch.isDigit() }) {
+                            msText = it
+                            tryUpdate()
+                        }
+                    },
+                    singleLine = true,
+                    label = { Text("ms") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.width(92.dp)
+                )
+            }
+        }
+
+        Text(
+            text = "Range: ${formatTimeWithMs(minMs)} – ${formatTimeWithMs(safeMax)}",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = 32.dp, top = 2.dp)
+        )
     }
 }
 

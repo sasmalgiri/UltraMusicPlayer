@@ -50,6 +50,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -76,6 +77,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
@@ -1113,6 +1116,38 @@ private fun LoopControlRow(
             }
         }
 
+        // Manual time edit (always clamped within valid range)
+        Spacer(modifier = Modifier.height(8.dp))
+
+        val safeDuration = durationMs.coerceAtLeast(0L)
+        val effectiveA = (loopStartMs ?: 0L).coerceIn(0L, safeDuration)
+        val effectiveB = (loopEndMs ?: safeDuration).coerceIn(0L, safeDuration)
+        val minGapMs = 1L
+
+        LoopPointEditorRowCompact(
+            label = "A",
+            valueMs = effectiveA,
+            minMs = 0L,
+            maxMs = (effectiveB - minGapMs).coerceAtLeast(0L),
+            onValueMsChange = { newA ->
+                val maxA = (effectiveB - minGapMs).coerceAtLeast(0L)
+                onLoopStartChange(newA.coerceIn(0L, maxA))
+            }
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        LoopPointEditorRowCompact(
+            label = "B",
+            valueMs = effectiveB,
+            minMs = (effectiveA + minGapMs).coerceAtMost(safeDuration),
+            maxMs = safeDuration,
+            onValueMsChange = { newB ->
+                val minB = (effectiveA + minGapMs).coerceAtMost(safeDuration)
+                onLoopEndChange(newB.coerceIn(minB, safeDuration))
+            }
+        )
+
         // Markers dropdown menu
         if (showMarkersMenu && onSaveMarker != null) {
             Card(
@@ -1245,7 +1280,7 @@ private fun LoopControlRow(
                     Spacer(modifier = Modifier.height(8.dp))
 
                     // Marker name input
-                    androidx.compose.material3.OutlinedTextField(
+                    OutlinedTextField(
                         value = markerName,
                         onValueChange = { markerName = it },
                         label = { Text("Marker Name", fontSize = 12.sp) },
@@ -1292,6 +1327,110 @@ private fun LoopControlRow(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun LoopPointEditorRowCompact(
+    label: String,
+    valueMs: Long,
+    minMs: Long,
+    maxMs: Long,
+    onValueMsChange: (Long) -> Unit
+) {
+    val safeMax = maxMs.coerceAtLeast(minMs)
+    val safeValue = valueMs.coerceIn(minMs, safeMax)
+
+    val minutes = (safeValue / 60000).toInt()
+    val seconds = ((safeValue % 60000) / 1000).toInt()
+    val millis = (safeValue % 1000).toInt()
+
+    var minText by remember(safeValue) { mutableStateOf(minutes.toString()) }
+    var secText by remember(safeValue) { mutableStateOf(seconds.toString().padStart(2, '0')) }
+    var msText by remember(safeValue) { mutableStateOf(millis.toString().padStart(3, '0')) }
+
+    fun tryUpdate() {
+        val m = minText.toIntOrNull() ?: return
+        val s = secText.toIntOrNull() ?: return
+        val ms = msText.toIntOrNull() ?: return
+        if (m < 0) return
+        if (s !in 0..59) return
+        if (ms !in 0..999) return
+        val newValue = (m * 60_000L) + (s * 1000L) + ms
+        onValueMsChange(newValue.coerceIn(minMs, safeMax))
+    }
+
+    Column {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.width(24.dp)
+            )
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedTextField(
+                    value = minText,
+                    onValueChange = {
+                        if (it.length <= 4 && it.all { ch -> ch.isDigit() }) {
+                            minText = it
+                            tryUpdate()
+                        }
+                    },
+                    singleLine = true,
+                    label = { Text("Min") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.width(84.dp)
+                )
+
+                Text(":", style = MaterialTheme.typography.titleLarge)
+
+                OutlinedTextField(
+                    value = secText,
+                    onValueChange = {
+                        if (it.length <= 2 && it.all { ch -> ch.isDigit() }) {
+                            secText = it
+                            tryUpdate()
+                        }
+                    },
+                    singleLine = true,
+                    label = { Text("Sec") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.width(84.dp)
+                )
+
+                Text(".", style = MaterialTheme.typography.titleLarge)
+
+                OutlinedTextField(
+                    value = msText,
+                    onValueChange = {
+                        if (it.length <= 3 && it.all { ch -> ch.isDigit() }) {
+                            msText = it
+                            tryUpdate()
+                        }
+                    },
+                    singleLine = true,
+                    label = { Text("ms") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.width(92.dp)
+                )
+            }
+        }
+
+        Text(
+            text = "Range: ${formatTimeWithMs(minMs)} – ${formatTimeWithMs(safeMax)}",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = 32.dp, top = 2.dp)
+        )
     }
 }
 

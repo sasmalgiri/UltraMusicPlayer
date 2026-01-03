@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Edit
@@ -35,6 +36,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
@@ -50,6 +52,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ultramusic.player.UltraMusicApp
@@ -82,6 +85,7 @@ fun UnifiedControlsPanel(
     onSetLoopEnd: () -> Unit,
     onClearLoop: () -> Unit,
     onSaveToArmory: () -> Unit,
+    onSetManualLoopPoints: (startMs: Long, endMs: Long) -> Unit = { _, _ -> },
     // Audio Enhancement
     bassLevel: Int = 500,
     loudnessGain: Int = 0,
@@ -225,7 +229,8 @@ fun UnifiedControlsPanel(
                         onSetStart = onSetLoopStart,
                         onSetEnd = onSetLoopEnd,
                         onClear = onClearLoop,
-                        onSaveToArmory = onSaveToArmory
+                        onSaveToArmory = onSaveToArmory,
+                        onSetManualLoopPoints = onSetManualLoopPoints
                     )
 
                     Spacer(modifier = Modifier.height(12.dp))
@@ -570,12 +575,21 @@ private fun ABLoopSection(
     onSetStart: () -> Unit,
     onSetEnd: () -> Unit,
     onClear: () -> Unit,
-    onSaveToArmory: () -> Unit
+    onSaveToArmory: () -> Unit,
+    onSetManualLoopPoints: (startMs: Long, endMs: Long) -> Unit
 ) {
     fun formatTime(ms: Long): String {
         val minutes = (ms / 1000) / 60
         val seconds = (ms / 1000) % 60
         return "%d:%02d".format(minutes, seconds)
+    }
+
+    fun formatTimeWithMs(ms: Long): String {
+        val totalSeconds = ms / 1000
+        val minutes = totalSeconds / 60
+        val seconds = totalSeconds % 60
+        val millis = (ms % 1000) / 10
+        return "%d:%02d.%02d".format(minutes, seconds, millis)
     }
 
     Column {
@@ -653,6 +667,40 @@ private fun ABLoopSection(
 
         Spacer(modifier = Modifier.height(8.dp))
 
+        // Manual time edit (always clamped within valid range)
+        val safeDuration = duration.coerceAtLeast(0L)
+        val effectiveA = (abLoopStart ?: 0L).coerceIn(0L, safeDuration)
+        val effectiveB = (abLoopEnd ?: safeDuration).coerceIn(0L, safeDuration)
+        val minGapMs = 1L
+
+        LoopPointEditorRowCompact(
+            label = "A",
+            valueMs = effectiveA,
+            minMs = 0L,
+            maxMs = (effectiveB - minGapMs).coerceAtLeast(0L),
+            onValueMsChange = { newA ->
+                val maxA = (effectiveB - minGapMs).coerceAtLeast(0L)
+                val clampedA = newA.coerceIn(0L, maxA)
+                onSetManualLoopPoints(clampedA, effectiveB.coerceIn((clampedA + minGapMs).coerceAtMost(safeDuration), safeDuration))
+            },
+            formatRange = { minMs, maxMs -> "Range: ${formatTimeWithMs(minMs)} – ${formatTimeWithMs(maxMs)}" }
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        LoopPointEditorRowCompact(
+            label = "B",
+            valueMs = effectiveB,
+            minMs = (effectiveA + minGapMs).coerceAtMost(safeDuration),
+            maxMs = safeDuration,
+            onValueMsChange = { newB ->
+                val minB = (effectiveA + minGapMs).coerceAtMost(safeDuration)
+                val clampedB = newB.coerceIn(minB, safeDuration)
+                onSetManualLoopPoints(effectiveA.coerceIn(0L, (clampedB - minGapMs).coerceAtLeast(0L)), clampedB)
+            },
+            formatRange = { minMs, maxMs -> "Range: ${formatTimeWithMs(minMs)} – ${formatTimeWithMs(maxMs)}" }
+        )
+
         // Buttons
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -709,6 +757,111 @@ private fun ABLoopSection(
                 Text("Save to Battle Armory", fontSize = 11.sp)
             }
         }
+    }
+}
+
+@Composable
+private fun LoopPointEditorRowCompact(
+    label: String,
+    valueMs: Long,
+    minMs: Long,
+    maxMs: Long,
+    onValueMsChange: (Long) -> Unit,
+    formatRange: (minMs: Long, maxMs: Long) -> String
+) {
+    val safeMax = maxMs.coerceAtLeast(minMs)
+    val safeValue = valueMs.coerceIn(minMs, safeMax)
+
+    val minutes = (safeValue / 60000).toInt()
+    val seconds = ((safeValue % 60000) / 1000).toInt()
+    val millis = (safeValue % 1000).toInt()
+
+    var minText by remember(safeValue) { mutableStateOf(minutes.toString()) }
+    var secText by remember(safeValue) { mutableStateOf(seconds.toString().padStart(2, '0')) }
+    var msText by remember(safeValue) { mutableStateOf(millis.toString().padStart(3, '0')) }
+
+    fun tryUpdate() {
+        val m = minText.toIntOrNull() ?: return
+        val s = secText.toIntOrNull() ?: return
+        val ms = msText.toIntOrNull() ?: return
+        if (m < 0) return
+        if (s !in 0..59) return
+        if (ms !in 0..999) return
+        val newValue = (m * 60_000L) + (s * 1000L) + ms
+        onValueMsChange(newValue.coerceIn(minMs, safeMax))
+    }
+
+    Column {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.width(24.dp)
+            )
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                OutlinedTextField(
+                    value = minText,
+                    onValueChange = {
+                        if (it.length <= 4 && it.all { ch -> ch.isDigit() }) {
+                            minText = it
+                            tryUpdate()
+                        }
+                    },
+                    singleLine = true,
+                    label = { Text("Min") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.width(76.dp)
+                )
+
+                Text(":", style = MaterialTheme.typography.titleLarge)
+
+                OutlinedTextField(
+                    value = secText,
+                    onValueChange = {
+                        if (it.length <= 2 && it.all { ch -> ch.isDigit() }) {
+                            secText = it
+                            tryUpdate()
+                        }
+                    },
+                    singleLine = true,
+                    label = { Text("Sec") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.width(76.dp)
+                )
+
+                Text(".", style = MaterialTheme.typography.titleLarge)
+
+                OutlinedTextField(
+                    value = msText,
+                    onValueChange = {
+                        if (it.length <= 3 && it.all { ch -> ch.isDigit() }) {
+                            msText = it
+                            tryUpdate()
+                        }
+                    },
+                    singleLine = true,
+                    label = { Text("ms") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.width(84.dp)
+                )
+            }
+        }
+
+        Text(
+            text = formatRange(minMs, safeMax),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = 32.dp, top = 2.dp)
+        )
     }
 }
 
