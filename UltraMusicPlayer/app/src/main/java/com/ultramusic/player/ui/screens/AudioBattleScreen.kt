@@ -229,6 +229,23 @@ fun AudioBattleScreen(
                 )
             }
 
+            // ===== BATTLE OUTPUT (2 MODE) =====
+            item {
+                com.ultramusic.player.ui.components.BattleOutputModeSelectorCard(
+                    enabled = isEnabled,
+                    dangerModeEnabled = dangerModeEnabled,
+                    limiterEnabled = limiterEnabled,
+                    onSelectPleasant = {
+                        viewModel.setDangerModeEnabled(false)
+                        viewModel.setLimiterEnabled(true)
+                    },
+                    onSelectUnsafe = {
+                        viewModel.setDangerModeEnabled(true)
+                        viewModel.setLimiterEnabled(false)
+                    }
+                )
+            }
+
             // ===== DANGER MODE =====
             item {
                 DangerModeCard(

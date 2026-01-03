@@ -72,7 +72,9 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Button
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
@@ -83,6 +85,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -167,6 +170,10 @@ fun EasyPlayerScreen(
     val hardwareProtection by viewModel.hardwareProtection.collectAsState()
     val audiophileMode by viewModel.audiophileMode.collectAsState()
 
+    // Battle output safety controls
+    val limiterEnabled by viewModel.limiterEnabled.collectAsState()
+    val dangerModeEnabled by viewModel.dangerModeEnabled.collectAsState()
+
     var isSearchActive by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
     
@@ -224,6 +231,7 @@ fun EasyPlayerScreen(
             onSetLoopA = { viewModel.setLoopStart() },
             onSetLoopB = { viewModel.setLoopEnd() },
             onClearLoop = { viewModel.clearLoop() },
+            onSetLoopPoints = { a, b -> viewModel.setWaveformLoopPoints(a, b) },
             onSetLoopAMs = { viewModel.setWaveformLoopStart(it) },
             onSetLoopBMs = { viewModel.setWaveformLoopEnd(it) },
             onSpeedChange = { viewModel.setSpeed(it) },
@@ -235,6 +243,8 @@ fun EasyPlayerScreen(
             loudnessGain = loudnessGain,
             clarityLevel = clarityLevel,
             spatialLevel = spatialLevel,
+            limiterEnabled = limiterEnabled,
+            dangerModeEnabled = dangerModeEnabled,
             onBassChange = { viewModel.setBattleBass(it) },
             onLoudnessChange = { viewModel.setBattleLoudness(it) },
             onClarityChange = { viewModel.setBattleClarity(it) },
@@ -248,7 +258,9 @@ fun EasyPlayerScreen(
             onSafeModeChange = { viewModel.setSafeMode(it) },
             onAudioEngineChange = { viewModel.setAudioEngine(it) },
             onHardwareProtectionChange = { viewModel.setHardwareProtection(it) },
-            onAudiophileModeChange = { viewModel.setAudiophileMode(it) }
+            onAudiophileModeChange = { viewModel.setAudiophileMode(it) },
+            onLimiterEnabledChange = { viewModel.setLimiterEnabled(it) },
+            onDangerModeEnabledChange = { viewModel.setDangerModeEnabled(it) }
         )
     }
 }
@@ -704,6 +716,7 @@ private fun NowPlayingSection(
     onSetLoopA: () -> Unit,
     onSetLoopB: () -> Unit,
     onClearLoop: () -> Unit,
+    onSetLoopPoints: ((Long, Long) -> Unit)? = null,
     onSetLoopAMs: (Long) -> Unit = {},
     onSetLoopBMs: (Long) -> Unit = {},
     onSpeedChange: (Float) -> Unit,
@@ -715,6 +728,8 @@ private fun NowPlayingSection(
     loudnessGain: Int = 0,
     clarityLevel: Int = 50,
     spatialLevel: Int = 500,
+    limiterEnabled: Boolean = true,
+    dangerModeEnabled: Boolean = false,
     onBassChange: (Int) -> Unit = {},
     onLoudnessChange: (Int) -> Unit = {},
     onClarityChange: (Int) -> Unit = {},
@@ -728,7 +743,9 @@ private fun NowPlayingSection(
     onSafeModeChange: (Boolean) -> Unit = {},
     onAudioEngineChange: (AudioEngineType) -> Unit = {},
     onHardwareProtectionChange: (Boolean) -> Unit = {},
-    onAudiophileModeChange: (Boolean) -> Unit = {}
+    onAudiophileModeChange: (Boolean) -> Unit = {},
+    onLimiterEnabledChange: (Boolean) -> Unit = {},
+    onDangerModeEnabledChange: (Boolean) -> Unit = {}
 ) {
     val currentSong = playbackState.currentSong
     val scrollState = rememberScrollState()
@@ -825,6 +842,7 @@ private fun NowPlayingSection(
                 onSetLoopA = onSetLoopA,
                 onSetLoopB = onSetLoopB,
                 onClearLoop = onClearLoop,
+                onSetLoopPoints = onSetLoopPoints,
                 onSetLoopAMs = onSetLoopAMs,
                 onSetLoopBMs = onSetLoopBMs
             )
@@ -912,6 +930,8 @@ private fun NowPlayingSection(
                 audioEngine = audioEngine,
                 hardwareProtection = hardwareProtection,
                 audiophileMode = audiophileMode,
+                limiterEnabled = limiterEnabled,
+                dangerModeEnabled = dangerModeEnabled,
                 onBassChange = onBassChange,
                 onLoudnessChange = onLoudnessChange,
                 onClarityChange = onClarityChange,
@@ -920,6 +940,8 @@ private fun NowPlayingSection(
                 onAudioEngineChange = onAudioEngineChange,
                 onHardwareProtectionChange = onHardwareProtectionChange,
                 onAudiophileModeChange = onAudiophileModeChange,
+                onLimiterEnabledChange = onLimiterEnabledChange,
+                onDangerModeEnabledChange = onDangerModeEnabledChange,
                 onResetAll = onResetAudioEffects
             )
         }
@@ -938,6 +960,8 @@ private fun AudioEnhancementRow(
     audioEngine: AudioEngineType,
     hardwareProtection: Boolean,
     audiophileMode: Boolean,
+    limiterEnabled: Boolean,
+    dangerModeEnabled: Boolean,
     onBassChange: (Int) -> Unit,
     onLoudnessChange: (Int) -> Unit,
     onClarityChange: (Int) -> Unit,
@@ -946,6 +970,8 @@ private fun AudioEnhancementRow(
     onAudioEngineChange: (AudioEngineType) -> Unit,
     onHardwareProtectionChange: (Boolean) -> Unit,
     onAudiophileModeChange: (Boolean) -> Unit,
+    onLimiterEnabledChange: (Boolean) -> Unit,
+    onDangerModeEnabledChange: (Boolean) -> Unit,
     onResetAll: () -> Unit
 ) {
     var showAdvanced by remember { mutableStateOf(false) }
@@ -1018,6 +1044,22 @@ private fun AudioEnhancementRow(
                 )
             }
         }
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        com.ultramusic.player.ui.components.BattleOutputModeSelectorCard(
+            enabled = true,
+            dangerModeEnabled = dangerModeEnabled,
+            limiterEnabled = limiterEnabled,
+            onSelectPleasant = {
+                onDangerModeEnabledChange(false)
+                onLimiterEnabledChange(true)
+            },
+            onSelectUnsafe = {
+                onDangerModeEnabledChange(true)
+                onLimiterEnabledChange(false)
+            }
+        )
 
         // Quick preset buttons (always visible)
         LazyRow(
@@ -1454,12 +1496,15 @@ private fun WaveformWithABMarkers(
     onSetLoopA: () -> Unit,
     onSetLoopB: () -> Unit,
     onClearLoop: () -> Unit,
+    onSetLoopPoints: ((Long, Long) -> Unit)? = null,
     onSetLoopAMs: (Long) -> Unit = {},
     onSetLoopBMs: (Long) -> Unit = {}
 ) {
     // Marker colors
     val markerAColor = Color(0xFF00E5FF)  // Cyan
     val markerBColor = Color(0xFFFFEA00)  // Yellow
+
+    var showEditLoopSheet by remember { mutableStateOf(false) }
 
     Column(modifier = Modifier.fillMaxWidth()) {
         // Loop control row: Loop [A] [B] [X]
@@ -1479,6 +1524,10 @@ private fun WaveformWithABMarkers(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                IconButton(onClick = { showEditLoopSheet = true }) {
+                    Icon(Icons.Default.Edit, contentDescription = "Edit loop points")
+                }
+
                 // A button - filled when set
                 Surface(
                     onClick = onSetLoopA,
@@ -1550,6 +1599,8 @@ private fun WaveformWithABMarkers(
             },
             onLoopStartChange = onSetLoopAMs,
             onLoopEndChange = onSetLoopBMs,
+            lockPlayheadToCenter = true,
+            enableTapToSeek = false,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(100.dp),
@@ -1593,6 +1644,32 @@ private fun WaveformWithABMarkers(
             }
         }
     }
+
+    if (showEditLoopSheet) {
+        EditLoopPointsSheet(
+            songPath = songPath,
+            duration = duration,
+            currentPosition = position,
+            loopStartPosition = loopStartPosition,
+            loopEndPosition = loopEndPosition,
+            onDismiss = { showEditLoopSheet = false },
+            onSeekMs = { seekMs ->
+                if (duration > 0) {
+                    onSeek(seekMs.toFloat() / duration)
+                }
+            },
+            onApply = { a, b ->
+                val handler = onSetLoopPoints
+                if (handler != null) {
+                    handler(a, b)
+                } else {
+                    onSetLoopAMs(a)
+                    onSetLoopBMs(b)
+                }
+            },
+            onClear = onClearLoop
+        )
+    }
 }
 
 /**
@@ -1603,6 +1680,286 @@ private fun formatTimeWithMs(ms: Long): String {
     val seconds = (ms % 60000) / 1000
     val millis = ms % 1000
     return "%d:%02d.%03d".format(minutes, seconds, millis)
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun EditLoopPointsSheet(
+    songPath: String?,
+    duration: Long,
+    currentPosition: Long,
+    loopStartPosition: Long?,
+    loopEndPosition: Long?,
+    onDismiss: () -> Unit,
+    onSeekMs: (Long) -> Unit,
+    onApply: (Long, Long) -> Unit,
+    onClear: () -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    val initialA = (loopStartPosition ?: 0L).coerceIn(0L, duration.coerceAtLeast(0L))
+    val initialB = (loopEndPosition ?: duration).coerceIn(0L, duration.coerceAtLeast(0L))
+
+    var aMs by remember { mutableStateOf(initialA) }
+    var bMs by remember { mutableStateOf(kotlin.math.max(initialB, (aMs + 1).coerceAtMost(duration))) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    fun validate(newA: Long = aMs, newB: Long = bMs): Boolean {
+        if (duration <= 0) {
+            error = "No duration available"
+            return false
+        }
+        if (newA !in 0L..duration || newB !in 0L..duration) {
+            error = "A and B must be within 0..${formatTimeWithMs(duration)}"
+            return false
+        }
+        if (newB <= newA) {
+            error = "B must be greater than A"
+            return false
+        }
+        error = null
+        return true
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = "Edit loop points",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    // Quick set A to current playhead (center)
+                    IconButton(onClick = {
+                        val t = currentPosition.coerceIn(0L, duration)
+                        val maxA = (bMs - 1).coerceAtLeast(0L)
+                        aMs = t.coerceIn(0L, maxA)
+                        validate()
+                    }) {
+                        Text("A", style = MaterialTheme.typography.titleMedium)
+                    }
+
+                    // Quick set B to current playhead (center)
+                    IconButton(onClick = {
+                        val t = currentPosition.coerceIn(0L, duration)
+                        val minB = (aMs + 1).coerceAtMost(duration)
+                        bMs = t.coerceIn(minB, duration)
+                        validate()
+                    }) {
+                        Text("B", style = MaterialTheme.typography.titleMedium)
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            com.ultramusic.player.ui.components.WaveformView(
+                audioPath = songPath,
+                currentPosition = currentPosition,
+                duration = duration,
+                abLoopStart = aMs,
+                abLoopEnd = bMs,
+                onSeek = { seekPos -> onSeekMs(seekPos) },
+                onLoopStartChange = { newA ->
+                    val maxA = (bMs - 1).coerceAtLeast(0L)
+                    aMs = newA.coerceIn(0L, maxA)
+                    validate()
+                },
+                onLoopEndChange = { newB ->
+                    val minB = (aMs + 1).coerceAtMost(duration)
+                    bMs = newB.coerceIn(minB, duration)
+                    validate()
+                },
+                lockPlayheadToCenter = true,
+                enableTapToSeek = false,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(110.dp),
+                waveformColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f),
+                progressColor = MaterialTheme.colorScheme.primary,
+                backgroundColor = MaterialTheme.colorScheme.surface
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Text(
+                text = "${formatTimeWithMs(currentPosition.coerceIn(0L, duration))} / ${formatTimeWithMs(duration)}",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            LoopPointEditorRow(
+                label = "A",
+                valueMs = aMs,
+                minMs = 0L,
+                maxMs = (bMs - 1).coerceAtLeast(0L),
+                onValueMsChange = { newA ->
+                    aMs = newA
+                    validate()
+                }
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            LoopPointEditorRow(
+                label = "B",
+                valueMs = bMs,
+                minMs = (aMs + 1).coerceAtMost(duration),
+                maxMs = duration,
+                onValueMsChange = { newB ->
+                    bMs = newB
+                    validate()
+                }
+            )
+
+            if (error != null) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = error!!,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                TextButton(onClick = onClear) { Text("Clear") }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(onClick = onDismiss) { Text("Cancel") }
+                    Button(
+                        onClick = {
+                            if (validate()) {
+                                onApply(aMs, bMs)
+                                onDismiss()
+                            }
+                        },
+                        enabled = validate()
+                    ) {
+                        Text("Apply")
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(18.dp))
+        }
+    }
+}
+
+@Composable
+private fun LoopPointEditorRow(
+    label: String,
+    valueMs: Long,
+    minMs: Long,
+    maxMs: Long,
+    onValueMsChange: (Long) -> Unit
+) {
+    val safeValue = valueMs.coerceIn(minMs, maxMs)
+    val minutes = (safeValue / 60000).toInt()
+    val seconds = ((safeValue % 60000) / 1000).toInt()
+    val millis = (safeValue % 1000).toInt()
+
+    var minText by remember(safeValue) { mutableStateOf(minutes.toString()) }
+    var secText by remember(safeValue) { mutableStateOf(seconds.toString().padStart(2, '0')) }
+    var msText by remember(safeValue) { mutableStateOf(millis.toString().padStart(3, '0')) }
+
+    fun tryUpdate() {
+        val m = minText.toIntOrNull() ?: return
+        val s = secText.toIntOrNull() ?: return
+        val ms = msText.toIntOrNull() ?: return
+        if (m < 0) return
+        if (s !in 0..59) return
+        if (ms !in 0..999) return
+        val newValue = (m * 60_000L) + (s * 1000L) + ms
+        onValueMsChange(newValue.coerceIn(minMs, maxMs))
+    }
+
+    Column {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.width(24.dp)
+            )
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedTextField(
+                    value = minText,
+                    onValueChange = {
+                        if (it.length <= 4 && it.all { ch -> ch.isDigit() }) {
+                            minText = it
+                            tryUpdate()
+                        }
+                    },
+                    singleLine = true,
+                    label = { Text("Min") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.width(84.dp)
+                )
+
+                Text(":", style = MaterialTheme.typography.titleLarge)
+
+                OutlinedTextField(
+                    value = secText,
+                    onValueChange = {
+                        if (it.length <= 2 && it.all { ch -> ch.isDigit() }) {
+                            secText = it
+                            tryUpdate()
+                        }
+                    },
+                    singleLine = true,
+                    label = { Text("Sec") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.width(84.dp)
+                )
+
+                Text(".", style = MaterialTheme.typography.titleLarge)
+
+                OutlinedTextField(
+                    value = msText,
+                    onValueChange = {
+                        if (it.length <= 3 && it.all { ch -> ch.isDigit() }) {
+                            msText = it
+                            tryUpdate()
+                        }
+                    },
+                    singleLine = true,
+                    label = { Text("ms") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.width(92.dp)
+                )
+            }
+        }
+
+        Text(
+            text = "Range: ${formatTimeWithMs(minMs)} – ${formatTimeWithMs(maxMs)}",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = 32.dp, top = 2.dp)
+        )
+    }
 }
 
 // Time input dialog for loop positions (mm:ss format)

@@ -68,7 +68,7 @@ import com.ultramusic.player.ui.theme.UltraGradientStart
 
 /**
  * NowPlayingScreen with NEW layout:
- * - TOP: Queue (left) + Folders (right) - BOTH visible side by side
+ * - TOP: Queue (top) + Folders (bottom) - BOTH visible stacked
  * - MIDDLE: Compact Now Playing (album art, song info, waveform, controls)
  * - BOTTOM: All Controls (Speed, Pitch, A-B Loop, Presets) - scrollable
  */
@@ -199,13 +199,13 @@ fun NowPlayingScreen(
                     .fillMaxSize()
                     .padding(paddingValues)
             ) {
-                // ==================== TOP SECTION: SMART PLAYLIST + FOLDERS SIDE BY SIDE ====================
-                Row(
+                // ==================== TOP SECTION: SMART PLAYLIST + FOLDERS STACKED ====================
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(0.45f) // 45% of screen for Playlist+Folders
                 ) {
-                    // Smart Playlist Panel (left side)
+                    // Smart Playlist Panel (top)
                     SmartPlaylistPanel(
                         playlist = activePlaylist,
                         searchState = playlistSearchState,
@@ -221,19 +221,19 @@ fun NowPlayingScreen(
                         onToggleLoop = { viewModel.togglePlaylistLoop() },
                         onShuffleRemaining = { viewModel.shufflePlaylistRemaining() },
                         modifier = Modifier
-                            .weight(0.5f)
-                            .fillMaxHeight()
+                            .fillMaxWidth()
+                            .weight(0.52f)
                     )
 
-                    // Vertical divider
+                    // Horizontal divider
                     Box(
                         modifier = Modifier
-                            .width(1.dp)
-                            .fillMaxHeight()
+                            .fillMaxWidth()
+                            .height(1.dp)
                             .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
                     )
 
-                    // Folders Panel (right side)
+                    // Folders Panel (bottom)
                     CompactFolderPanel(
                         currentPath = currentFolderPath,
                         breadcrumbs = breadcrumbs,
@@ -245,8 +245,8 @@ fun NowPlayingScreen(
                         onPlayNext = { s -> viewModel.addToPlayNext(s) },
                         onAddToEnd = { s -> viewModel.addToPlaylistEnd(s) },
                         modifier = Modifier
-                            .weight(0.5f)
-                            .fillMaxHeight()
+                            .fillMaxWidth()
+                            .weight(0.48f)
                     )
                 }
 

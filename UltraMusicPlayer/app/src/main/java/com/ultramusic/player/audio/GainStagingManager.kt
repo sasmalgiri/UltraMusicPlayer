@@ -29,10 +29,12 @@ class GainStagingManager @Inject constructor() {
         private const val TAG = "GainStagingManager"
 
         // Maximum total gain before AGR kicks in (dB)
-        const val MAX_TOTAL_GAIN_DB = 12f
+        // Increased headroom so Battle modes don't get quieter from AGR.
+        // Battle chain includes limiting, so we can allow more gain before reducing loudness.
+        const val MAX_TOTAL_GAIN_DB = 24f
 
         // Safety margin added to gain reduction (dB)
-        const val SAFETY_MARGIN_DB = 3f
+        const val SAFETY_MARGIN_DB = 2f
 
         // Maximum gain reduction to apply (dB)
         const val MAX_REDUCTION_DB = 24f
@@ -43,6 +45,10 @@ class GainStagingManager @Inject constructor() {
         const val EQ_MAX_GAIN_DB = 15f           // Per band at max
         const val COMPRESSOR_MAKEUP_MAX_DB = 24f // Direct dB value
         const val EXCITER_MAX_GAIN_DB = 6f       // Perceived loudness increase
+
+        // EQ boosts contribute to peak gain, but are less strictly additive than bass + loudness.
+        // Weighting avoids over-reducing loudness when bass + EQ are both high.
+        const val EQ_WEIGHT = 0.6f
     }
 
     // ==================== SAFE MODE (AGR BYPASS) ====================
@@ -153,7 +159,7 @@ class GainStagingManager @Inject constructor() {
     private fun recalculateGain() {
         // Sum all gain sources
         // Note: These don't perfectly add in real audio, but this is a safe approximation
-        val total = bassBoostGainDb + eqPeakGainDb + loudnessGainDb +
+        val total = bassBoostGainDb + (eqPeakGainDb * EQ_WEIGHT) + loudnessGainDb +
                    compressorMakeupGainDb + exciterGainDb
 
         _totalGainDb.value = total

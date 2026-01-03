@@ -69,6 +69,8 @@ fun WaveformView(
     onLoopStartChange: (Long) -> Unit = {},
     onLoopEndChange: (Long) -> Unit = {},
     modifier: Modifier = Modifier,
+    lockPlayheadToCenter: Boolean = false,
+    enableTapToSeek: Boolean = true,
     waveformColor: Color = Color(0xFF4CAF50),
     progressColor: Color = Color(0xFFE91E63),
     backgroundColor: Color = Color(0xFF1A1A1A),
@@ -88,6 +90,14 @@ fun WaveformView(
     val currentProgress = if (duration > 0) currentPosition.toFloat() / duration else 0f
     if (!isDraggingPlayhead) {
         dragPosition = currentProgress
+    }
+
+    // Center progress used for centered-playhead mode.
+    // When not scrubbing, it tracks the actual playback position.
+    val centerProgress = if (lockPlayheadToCenter) {
+        if (isDraggingPlayhead) dragPosition else currentProgress
+    } else {
+        currentProgress
     }
 
     // Marker positions as fractions
@@ -160,7 +170,7 @@ fun WaveformView(
                 .background(backgroundColor)
                 .pointerInput(duration) {
                     detectTapGestures { offset ->
-                        if (duration > 0) {
+                        if (duration > 0 && (!lockPlayheadToCenter || enableTapToSeek)) {
                             val progress = offset.x / size.width
                             val seekPosition = (progress * duration).toLong()
                             onSeek(seekPosition.coerceIn(0, duration))
@@ -174,8 +184,22 @@ fun WaveformView(
                                 val pos = offset.x / size.width
                                 val threshold = 0.08f  // 8% touch target
 
-                                val distToA = loopStartPos?.let { abs(pos - it) } ?: Float.MAX_VALUE
-                                val distToB = loopEndPos?.let { abs(pos - it) } ?: Float.MAX_VALUE
+                                val distToA = loopStartPos?.let {
+                                    val markerPos = if (lockPlayheadToCenter) {
+                                        (0.5f + (it - centerProgress)).coerceIn(0f, 1f)
+                                    } else {
+                                        it
+                                    }
+                                    abs(pos - markerPos)
+                                } ?: Float.MAX_VALUE
+                                val distToB = loopEndPos?.let {
+                                    val markerPos = if (lockPlayheadToCenter) {
+                                        (0.5f + (it - centerProgress)).coerceIn(0f, 1f)
+                                    } else {
+                                        it
+                                    }
+                                    abs(pos - markerPos)
+                                } ?: Float.MAX_VALUE
 
                                 when {
                                     distToA < threshold && distToA <= distToB -> {
@@ -186,29 +210,52 @@ fun WaveformView(
                                     }
                                     else -> {
                                         isDraggingPlayhead = true
-                                        dragPosition = pos.coerceIn(0f, 1f)
-                                        onSeek((dragPosition * duration).toLong())
+                                        if (lockPlayheadToCenter) {
+                                            // Center playhead stays fixed; waveform scrubs under it.
+                                            // Initialize dragPosition to currentProgress so subsequent deltas adjust it.
+                                            dragPosition = currentProgress
+                                        } else {
+                                            dragPosition = pos.coerceIn(0f, 1f)
+                                            onSeek((dragPosition * duration).toLong())
+                                        }
                                     }
                                 }
                             }
                         },
-                        onDrag = { change, _ ->
+                        onDrag = { change, dragAmount ->
                             if (duration > 0) {
                                 val pos = (change.position.x / size.width).coerceIn(0f, 1f)
                                 when {
                                     isDraggingA -> {
-                                        val maxPos = loopEndPos?.minus(0.01f) ?: 1f
-                                        val newPos = pos.coerceIn(0f, maxPos)
+                                        val rawPos = if (lockPlayheadToCenter) {
+                                            (centerProgress + (pos - 0.5f)).coerceIn(0f, 1f)
+                                        } else {
+                                            pos
+                                        }
+                                        val maxPos = loopEndPos?.minus(0.0005f) ?: 1f
+                                        val newPos = rawPos.coerceIn(0f, maxPos)
                                         onLoopStartChange((newPos * duration).toLong())
                                     }
                                     isDraggingB -> {
-                                        val minPos = loopStartPos?.plus(0.01f) ?: 0f
-                                        val newPos = pos.coerceIn(minPos, 1f)
+                                        val rawPos = if (lockPlayheadToCenter) {
+                                            (centerProgress + (pos - 0.5f)).coerceIn(0f, 1f)
+                                        } else {
+                                            pos
+                                        }
+                                        val minPos = loopStartPos?.plus(0.0005f) ?: 0f
+                                        val newPos = rawPos.coerceIn(minPos, 1f)
                                         onLoopEndChange((newPos * duration).toLong())
                                     }
                                     isDraggingPlayhead -> {
-                                        dragPosition = pos
-                                        onSeek((pos * duration).toLong())
+                                        if (lockPlayheadToCenter) {
+                                            // Dragging waveform: deltaX > 0 means move waveform right => go backwards.
+                                            val deltaProgress = (dragAmount.x / size.width)
+                                            dragPosition = (dragPosition - deltaProgress).coerceIn(0f, 1f)
+                                            onSeek((dragPosition * duration).toLong())
+                                        } else {
+                                            dragPosition = pos
+                                            onSeek((pos * duration).toLong())
+                                        }
                                     }
                                 }
                             }
@@ -224,34 +271,44 @@ fun WaveformView(
             val width = size.width
             val height = size.height
             val centerY = height / 2
+
+            fun progressToX(progress: Float): Float {
+                val clamped = progress.coerceIn(0f, 1f)
+                return if (lockPlayheadToCenter) {
+                    width * (0.5f + (clamped - centerProgress))
+                } else {
+                    clamped * width
+                }
+            }
             
             // Draw waveform
             waveformData?.let { data ->
-                val samplesPerPixel = data.size / width.toInt()
-                
-                for (x in 0 until width.toInt()) {
-                    val startSample = (x * samplesPerPixel).coerceIn(0, data.size - 1)
-                    val endSample = ((x + 1) * samplesPerPixel).coerceIn(0, data.size)
-                    
-                    // Get max amplitude in this pixel range
+                val wInt = max(1, width.toInt())
+                val samplesPerPixel = max(1, data.size / wInt)
+
+                for (x in 0 until wInt) {
+                    val timeFraction = if (lockPlayheadToCenter) {
+                        (centerProgress + (x.toFloat() / width - 0.5f)).coerceIn(0f, 1f)
+                    } else {
+                        (x.toFloat() / width).coerceIn(0f, 1f)
+                    }
+
+                    val centerSample = (timeFraction * (data.size - 1)).toInt().coerceIn(0, data.size - 1)
+                    val startSample = (centerSample - samplesPerPixel / 2).coerceIn(0, data.size - 1)
+                    val endSample = (centerSample + samplesPerPixel / 2).coerceIn(0, data.size)
+
                     var maxAmp = 0f
                     for (i in startSample until endSample) {
                         maxAmp = max(maxAmp, abs(data[i]))
                     }
-                    
+
                     val barHeight = maxAmp * height * 0.8f
-                    
-                    // Determine color based on progress
-                    val xProgress = x / width
-                    val currentProgress = if (duration > 0) currentPosition.toFloat() / duration else 0f
-                    
-                    val color = if (xProgress <= currentProgress) {
+                    val color = if (timeFraction <= centerProgress) {
                         progressColor
                     } else {
                         waveformColor.copy(alpha = 0.5f)
                     }
-                    
-                    // Draw bar
+
                     drawLine(
                         color = color,
                         start = Offset(x.toFloat(), centerY - barHeight / 2),
@@ -266,7 +323,7 @@ fun WaveformView(
                     val barHeight = (20 + (kotlin.math.sin(x * 0.1) * 15)).toFloat()
                     
                     val currentProgress = if (duration > 0) currentPosition.toFloat() / duration else 0f
-                    val color = if (progress <= currentProgress) {
+                    val color = if (!lockPlayheadToCenter && progress <= currentProgress) {
                         progressColor.copy(alpha = 0.3f)
                     } else {
                         waveformColor.copy(alpha = 0.2f)
@@ -283,19 +340,21 @@ fun WaveformView(
             
             // Draw loop region highlight (behind markers)
             if (abLoopStart != null && abLoopEnd != null && duration > 0) {
-                val startX = (abLoopStart.toFloat() / duration) * width
-                val endX = (abLoopEnd.toFloat() / duration) * width
+                val startX = progressToX(abLoopStart.toFloat() / duration)
+                val endX = progressToX(abLoopEnd.toFloat() / duration)
+                val left = min(startX, endX).coerceIn(0f, width)
+                val right = max(startX, endX).coerceIn(0f, width)
 
                 drawRect(
                     color = Color(0xFFFF9800).copy(alpha = 0.2f),  // Orange highlight
-                    topLeft = Offset(startX, 0f),
-                    size = Size(endX - startX, height)
+                    topLeft = Offset(left, 0f),
+                    size = Size((right - left).coerceAtLeast(0f), height)
                 )
             }
 
             // Draw A marker with label
             if (abLoopStart != null && duration > 0) {
-                val startX = (abLoopStart.toFloat() / duration) * width
+                val startX = progressToX(abLoopStart.toFloat() / duration).coerceIn(0f, width)
 
                 // A marker line
                 drawLine(
@@ -329,7 +388,7 @@ fun WaveformView(
 
             // Draw B marker with label
             if (abLoopEnd != null && duration > 0) {
-                val endX = (abLoopEnd.toFloat() / duration) * width
+                val endX = progressToX(abLoopEnd.toFloat() / duration).coerceIn(0f, width)
 
                 // B marker line
                 drawLine(
@@ -363,7 +422,7 @@ fun WaveformView(
 
             // Draw playhead
             if (duration > 0) {
-                val playheadX = (currentPosition.toFloat() / duration) * width
+                val playheadX = if (lockPlayheadToCenter) width / 2f else (currentPosition.toFloat() / duration) * width
                 drawLine(
                     color = Color.White,
                     start = Offset(playheadX, 0f),

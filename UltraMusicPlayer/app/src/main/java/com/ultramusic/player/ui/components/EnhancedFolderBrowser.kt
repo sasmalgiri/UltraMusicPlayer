@@ -146,10 +146,23 @@ fun EnhancedFolderBrowser(
         buildBreadcrumbs(currentPath)
     }
 
-    // Filter folders based on search
-    val filteredFolders = remember(folders, searchQuery) {
-        if (searchQuery.isBlank()) folders
-        else folders.filter { it.name.contains(searchQuery, ignoreCase = true) }
+    // In hierarchical mode, show the "current" folder's children (so clicking a folder actually enters it).
+    val baseFoldersForCurrentPath = remember(folders, currentPath, viewMode) {
+        if (viewMode != FolderViewMode.HIERARCHICAL) {
+            folders
+        } else {
+            if (currentPath.isBlank()) {
+                folders
+            } else {
+                findFolderByPath(folders, currentPath)?.subFolders ?: emptyList()
+            }
+        }
+    }
+
+    // Filter folders based on search (applies to the currently visible folder list)
+    val filteredFolders = remember(baseFoldersForCurrentPath, searchQuery) {
+        if (searchQuery.isBlank()) baseFoldersForCurrentPath
+        else baseFoldersForCurrentPath.filter { it.name.contains(searchQuery, ignoreCase = true) }
     }
 
     Column(modifier = modifier.fillMaxSize()) {
@@ -220,6 +233,18 @@ fun EnhancedFolderBrowser(
             }
         }
     }
+}
+
+private fun findFolderByPath(
+    folders: List<FolderItem>,
+    targetPath: String
+): FolderItem? {
+    for (folder in folders) {
+        if (folder.path == targetPath) return folder
+        val matchInChildren = findFolderByPath(folder.subFolders, targetPath)
+        if (matchInChildren != null) return matchInChildren
+    }
+    return null
 }
 
 @Composable

@@ -1811,6 +1811,16 @@ class MainViewModel @Inject constructor(
         }
     }
 
+    fun setWaveformLoopPoints(startMs: Long, endMs: Long) {
+        val start = startMs.coerceAtLeast(0)
+        val end = endMs.coerceAtLeast(0)
+        if (end <= start) return
+        _loopStartMs.value = start
+        _loopEndMs.value = end
+        _isLoopEnabled.value = true
+        musicController.setLoopPoints(start, end)
+    }
+
     fun clearWaveformLoop() {
         _loopStartMs.value = null
         _loopEndMs.value = null

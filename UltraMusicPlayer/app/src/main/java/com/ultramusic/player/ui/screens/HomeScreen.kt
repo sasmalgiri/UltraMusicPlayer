@@ -74,6 +74,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.unit.sp
 import com.ultramusic.player.data.AudioPreset
 import com.ultramusic.player.data.Song
@@ -84,6 +86,9 @@ import com.ultramusic.player.ui.components.NowPlayingBar
 import com.ultramusic.player.ui.components.PresetPanel
 import com.ultramusic.player.ui.components.SongListItem
 import com.ultramusic.player.ui.components.SpeedPitchControl
+import com.ultramusic.player.ui.theme.NeonPink
+import com.ultramusic.player.ui.theme.NeonPurple
+import com.ultramusic.player.ui.theme.VibrantCyan
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -467,35 +472,64 @@ private fun BrowseTabRow(
         BrowseTab.FOLDERS to "Folders"
     )
 
-    ScrollableTabRow(
-        selectedTabIndex = tabs.indexOfFirst { it.first == selectedTab },
-        edgePadding = 16.dp,
-        containerColor = MaterialTheme.colorScheme.surface,
-        contentColor = MaterialTheme.colorScheme.primary
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         tabs.forEach { (tab, title) ->
-            Tab(
-                selected = selectedTab == tab,
+            val isSelected = selectedTab == tab
+            Surface(
                 onClick = { onTabSelected(tab) },
-                text = {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Icon(
-                            imageVector = when (tab) {
-                                BrowseTab.ALL_SONGS -> Icons.Default.MusicNote
-                                BrowseTab.ARTISTS -> Icons.Default.Person
-                                BrowseTab.ALBUMS -> Icons.Default.Album
-                                BrowseTab.FOLDERS -> Icons.Default.Folder
-                            },
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Text(title)
-                    }
+                shape = RoundedCornerShape(12.dp),
+                color = if (isSelected)
+                    MaterialTheme.colorScheme.primary
+                else
+                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                modifier = Modifier
+                    .weight(1f)
+                    .height(44.dp)
+                    .then(
+                        if (isSelected) Modifier.shadow(
+                            elevation = 4.dp,
+                            shape = RoundedCornerShape(12.dp),
+                            ambientColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)
+                        ) else Modifier
+                    )
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Icon(
+                        imageVector = when (tab) {
+                            BrowseTab.ALL_SONGS -> Icons.Default.MusicNote
+                            BrowseTab.ARTISTS -> Icons.Default.Person
+                            BrowseTab.ALBUMS -> Icons.Default.Album
+                            BrowseTab.FOLDERS -> Icons.Default.Folder
+                        },
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                        tint = if (isSelected)
+                            MaterialTheme.colorScheme.onPrimary
+                        else
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                        color = if (isSelected)
+                            MaterialTheme.colorScheme.onPrimary
+                        else
+                            MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1
+                    )
                 }
-            )
+            }
         }
     }
 }
@@ -678,45 +712,57 @@ private fun ArtistItem(
     songCount: Int,
     onClick: () -> Unit
 ) {
-    Card(
+    Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp),
+            .padding(horizontal = 12.dp, vertical = 4.dp)
+            .shadow(
+                elevation = 2.dp,
+                shape = RoundedCornerShape(16.dp),
+                ambientColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
+            ),
         onClick = onClick,
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-        )
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surface
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
+                .padding(14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Artist icon
+            // Artist icon with gradient
             Box(
                 modifier = Modifier
-                    .size(48.dp)
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(MaterialTheme.colorScheme.primaryContainer),
+                    .size(52.dp)
+                    .shadow(4.dp, shape = RoundedCornerShape(16.dp))
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(
+                        Brush.linearGradient(
+                            colors = listOf(
+                                NeonPurple.copy(alpha = 0.8f),
+                                NeonPink.copy(alpha = 0.8f)
+                            )
+                        )
+                    ),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     Icons.Default.Person,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                    modifier = Modifier.size(24.dp)
+                    tint = Color.White,
+                    modifier = Modifier.size(26.dp)
                 )
             }
 
-            Spacer(Modifier.width(16.dp))
+            Spacer(Modifier.width(14.dp))
 
             // Artist info
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = artistName,
                     style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Medium,
+                    fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -727,12 +773,22 @@ private fun ArtistItem(
                 )
             }
 
-            // Play button
-            Icon(
-                Icons.Default.PlayArrow,
-                contentDescription = "Play all",
-                tint = MaterialTheme.colorScheme.primary
-            )
+            // Play button with glow
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .shadow(4.dp, shape = RoundedCornerShape(12.dp))
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.primary),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Default.PlayArrow,
+                    contentDescription = "Play all",
+                    tint = Color.White,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
         }
     }
 }
@@ -781,68 +837,90 @@ private fun AlbumItem(
     songCount: Int,
     onClick: () -> Unit
 ) {
-    Card(
+    Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp),
+            .padding(horizontal = 12.dp, vertical = 4.dp)
+            .shadow(
+                elevation = 2.dp,
+                shape = RoundedCornerShape(16.dp),
+                ambientColor = MaterialTheme.colorScheme.secondary.copy(alpha = 0.1f)
+            ),
         onClick = onClick,
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-        )
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surface
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
+                .padding(14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Album icon
+            // Album icon with gradient
             Box(
                 modifier = Modifier
-                    .size(48.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(MaterialTheme.colorScheme.secondaryContainer),
+                    .size(52.dp)
+                    .shadow(4.dp, shape = RoundedCornerShape(12.dp))
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(
+                        Brush.linearGradient(
+                            colors = listOf(
+                                VibrantCyan.copy(alpha = 0.8f),
+                                NeonPurple.copy(alpha = 0.8f)
+                            )
+                        )
+                    ),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     Icons.Default.Album,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                    modifier = Modifier.size(24.dp)
+                    tint = Color.White,
+                    modifier = Modifier.size(26.dp)
                 )
             }
 
-            Spacer(Modifier.width(16.dp))
+            Spacer(Modifier.width(14.dp))
 
             // Album info
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = albumName,
                     style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Medium,
+                    fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
                     text = artistName,
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
                     text = "$songCount songs",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                 )
             }
 
-            // Play button
-            Icon(
-                Icons.Default.PlayArrow,
-                contentDescription = "Play all",
-                tint = MaterialTheme.colorScheme.primary
-            )
+            // Play button with glow
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .shadow(4.dp, shape = RoundedCornerShape(12.dp))
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.primary),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Default.PlayArrow,
+                    contentDescription = "Play all",
+                    tint = Color.White,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
         }
     }
 }

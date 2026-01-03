@@ -216,6 +216,21 @@ fun BattleControlsPanel(
             onClearSlot = onClearProfileSlot
         )
 
+        // Output mode (2-mode UX)
+        BattleOutputModeSelectorCard(
+            enabled = isEnabled,
+            dangerModeEnabled = dangerModeEnabled,
+            limiterEnabled = limiterEnabled,
+            onSelectPleasant = {
+                onDangerModeChange(false)
+                onLimiterEnabledChange(true)
+            },
+            onSelectUnsafe = {
+                onDangerModeChange(true)
+                onLimiterEnabledChange(false)
+            }
+        )
+
         // Danger Mode
         DangerModeCard(
             enabled = isEnabled,
