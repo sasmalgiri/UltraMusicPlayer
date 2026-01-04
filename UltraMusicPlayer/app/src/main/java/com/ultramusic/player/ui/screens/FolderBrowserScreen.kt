@@ -5,6 +5,8 @@ package com.ultramusic.player.ui.screens
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -67,6 +69,7 @@ import com.ultramusic.player.data.Song
 import com.ultramusic.player.ui.MainViewModel
 import com.ultramusic.player.ui.components.EnhancedFolderBrowser
 import com.ultramusic.player.ui.components.FolderViewMode
+import com.ultramusic.player.ui.components.NowPlayingBar
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -150,11 +153,12 @@ fun FolderBrowserScreen(
             )
         }
     ) { paddingValues ->
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
+            Column(modifier = Modifier.fillMaxSize()) {
             // Extract songs from browseItems
             val songsInCurrentFolder = browseItems
                 .filterIsInstance<BrowseItem.SongItem>()
@@ -258,6 +262,24 @@ fun FolderBrowserScreen(
                         }
                     }
                 }
+            }
+
+            }
+
+            // Now Playing Bar
+            AnimatedVisibility(
+                visible = playbackState.currentSong != null,
+                enter = slideInVertically(initialOffsetY = { it }),
+                exit = slideOutVertically(targetOffsetY = { it }),
+                modifier = Modifier.align(Alignment.BottomCenter)
+            ) {
+                NowPlayingBar(
+                    playbackState = playbackState,
+                    onPlayPauseClick = { viewModel.togglePlayPause() },
+                    onPreviousClick = { viewModel.playPrevious() },
+                    onNextClick = { viewModel.playNext() },
+                    onClick = onNavigateToNowPlaying
+                )
             }
         }
     }

@@ -144,6 +144,7 @@ import kotlin.random.Random
 fun EasyPlayerScreen(
     viewModel: MainViewModel,
     onNavigateBack: () -> Unit,
+    onNavigateToVoiceSearch: () -> Unit = {},
     onNavigateToBattleLibrary: () -> Unit = {},
     onNavigateToBattleHQ: () -> Unit = {},
     onNavigateToActiveBattle: () -> Unit = {},
@@ -193,7 +194,7 @@ fun EasyPlayerScreen(
                 viewModel.updatePlaylistSearchQuery(it)
             },
             onActiveChange = { isSearchActive = it },
-            onVoiceSearch = { viewModel.startVoiceSearch() },
+            onVoiceSearch = onNavigateToVoiceSearch,
             searchResults = searchState.allMatches,
             onAddSong = { song, playNext ->
                 viewModel.addToPlaylistFromSearch(song, playNext)

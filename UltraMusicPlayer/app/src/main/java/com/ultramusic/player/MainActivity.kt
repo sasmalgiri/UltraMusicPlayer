@@ -285,6 +285,9 @@ fun UltraMusicNavigation() {
                     onNavigateBack = {
                         navController.navigate("home")
                     },
+                    onNavigateToVoiceSearch = {
+                        navController.navigate("voice_search")
+                    },
                     onNavigateToBattleLibrary = {
                         navController.navigate("battle_library")
                     },

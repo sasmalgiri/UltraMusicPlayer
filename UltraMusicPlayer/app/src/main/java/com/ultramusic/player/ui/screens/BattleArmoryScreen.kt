@@ -18,9 +18,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
@@ -45,17 +48,22 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import com.ultramusic.player.core.BattleArmory
 import com.ultramusic.player.core.BattleSongRecommendations
 import com.ultramusic.player.core.ClipPurpose
@@ -129,6 +137,8 @@ fun BattleArmoryScreen(
                     clips = quickFireClips,
                     onPlayClip = onPlayClip,
                     onRemoveFromQuickFire = { armory.removeFromQuickFire(it.id) }
+                    ,
+                    onReorderQuickFire = { fromIndex, toIndex -> armory.reorderQuickFire(fromIndex, toIndex) }
                 )
                 1 -> AllClipsSection(
                     clipsByPurpose = clipsByPurpose,
@@ -175,9 +185,15 @@ private fun TabButton(
 private fun QuickFireSection(
     clips: List<CounterClip>,
     onPlayClip: (CounterClip) -> Unit,
-    onRemoveFromQuickFire: (CounterClip) -> Unit
+    onRemoveFromQuickFire: (CounterClip) -> Unit,
+    onReorderQuickFire: (fromIndex: Int, toIndex: Int) -> Unit
 ) {
+    val listState = rememberLazyListState()
+    var draggedIndex by remember { mutableIntStateOf(-1) }
+    var dragTranslationY by remember { mutableFloatStateOf(0f) }
+
     LazyColumn(
+        state = listState,
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -206,12 +222,61 @@ private fun QuickFireSection(
                 )
             }
         } else {
-            items(clips) { clip ->
+            itemsIndexed(
+                items = clips,
+                key = { _, clip -> clip.id }
+            ) { index, clip ->
+                val isDragging = draggedIndex == index
+                val translationY = if (isDragging) dragTranslationY else 0f
+
                 QuickFireClipCard(
                     clip = clip,
-                    index = clips.indexOf(clip) + 1,
+                    index = index + 1,
                     onPlay = { onPlayClip(clip) },
-                    onRemove = { onRemoveFromQuickFire(clip) }
+                    onRemove = { onRemoveFromQuickFire(clip) },
+                    modifier = Modifier
+                        .zIndex(if (isDragging) 1f else 0f)
+                        .graphicsLayer { this.translationY = translationY }
+                        .pointerInput(clips, index) {
+                            detectDragGesturesAfterLongPress(
+                                onDragStart = {
+                                    draggedIndex = index
+                                    dragTranslationY = 0f
+                                },
+                                onDragCancel = {
+                                    draggedIndex = -1
+                                    dragTranslationY = 0f
+                                },
+                                onDragEnd = {
+                                    draggedIndex = -1
+                                    dragTranslationY = 0f
+                                },
+                                onDrag = { change, dragAmount ->
+                                    change.consume()
+                                    if (draggedIndex < 0) return@detectDragGesturesAfterLongPress
+
+                                    dragTranslationY += dragAmount.y
+
+                                    val visibleItems = listState.layoutInfo.visibleItemsInfo
+                                    val draggedItemInfo = visibleItems.firstOrNull { it.index == draggedIndex }
+                                        ?: return@detectDragGesturesAfterLongPress
+
+                                    val draggedCenter = draggedItemInfo.offset + dragTranslationY + (draggedItemInfo.size / 2f)
+                                    val targetItemInfo = visibleItems
+                                        .firstOrNull { info ->
+                                            draggedCenter in info.offset.toFloat()..(info.offset + info.size).toFloat()
+                                        }
+                                        ?: return@detectDragGesturesAfterLongPress
+
+                                    val targetIndex = targetItemInfo.index
+                                    if (targetIndex != draggedIndex && targetIndex in clips.indices) {
+                                        onReorderQuickFire(draggedIndex, targetIndex)
+                                        draggedIndex = targetIndex
+                                        dragTranslationY = 0f
+                                    }
+                                }
+                            )
+                        }
                 )
             }
         }
@@ -227,10 +292,11 @@ private fun QuickFireClipCard(
     clip: CounterClip,
     index: Int,
     onPlay: () -> Unit,
-    onRemove: () -> Unit
+    onRemove: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     Card(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .clickable { onPlay() },
         colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E)),

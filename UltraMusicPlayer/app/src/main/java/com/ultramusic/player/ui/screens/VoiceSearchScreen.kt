@@ -1,3 +1,5 @@
+@file:androidx.media3.common.util.UnstableApi
+
 package com.ultramusic.player.ui.screens
 
 import android.Manifest
@@ -13,6 +15,8 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -85,6 +89,7 @@ import com.ultramusic.player.data.Song
 import com.ultramusic.player.ui.MainViewModel
 import com.ultramusic.player.ui.theme.UltraGradientEnd
 import com.ultramusic.player.ui.theme.UltraGradientStart
+import com.ultramusic.player.ui.components.NowPlayingBar
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalPermissionsApi::class)
 @Composable
@@ -138,43 +143,65 @@ fun VoiceSearchScreen(
             )
         }
     ) { paddingValues ->
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(paddingValues),
-            horizontalAlignment = Alignment.CenterHorizontally
+                .padding(paddingValues)
         ) {
-            // Voice Search UI
-            Box(
+            Column(
                 modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth(),
-                contentAlignment = Alignment.Center
+                    .fillMaxSize()
+                    .padding(bottom = if (playbackState.currentSong != null) 96.dp else 0.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                when {
-                    !micPermission.status.isGranted -> {
-                        PermissionNeeded(
-                            onRequestPermission = { micPermission.launchPermissionRequest() }
-                        )
-                    }
-                    else -> {
-                        VoiceSearchContent(
-                            state = voiceState,
-                            noiseLevel = noiseLevel,
-                            searchResults = voiceSearchResults,
-                            currentlyPlaying = playbackState.currentSong,
-                            onStartListening = { viewModel.startVoiceSearch() },
-                            onStopListening = { viewModel.stopVoiceSearch() },
-                            onCancel = { viewModel.cancelVoiceSearch() },
-                            onPlaySong = { song -> viewModel.playSong(song) },
-                            onRetry = { viewModel.resetVoiceSearch() }
-                        )
+                // Voice Search UI
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    when {
+                        !micPermission.status.isGranted -> {
+                            PermissionNeeded(
+                                onRequestPermission = { micPermission.launchPermissionRequest() }
+                            )
+                        }
+                        else -> {
+                            VoiceSearchContent(
+                                state = voiceState,
+                                noiseLevel = noiseLevel,
+                                searchResults = voiceSearchResults,
+                                currentlyPlaying = playbackState.currentSong,
+                                onStartListening = { viewModel.startVoiceSearch() },
+                                onStopListening = { viewModel.stopVoiceSearch() },
+                                onCancel = { viewModel.cancelVoiceSearch() },
+                                onPlaySong = { song -> viewModel.playSong(song) },
+                                onRetry = { viewModel.resetVoiceSearch() }
+                            )
+                        }
                     }
                 }
+                
+                // Tips section
+                TipsSection()
             }
-            
-            // Tips section
-            TipsSection()
+
+            // Now Playing Bar
+            AnimatedVisibility(
+                visible = playbackState.currentSong != null,
+                enter = slideInVertically(initialOffsetY = { it }),
+                exit = slideOutVertically(targetOffsetY = { it }),
+                modifier = Modifier.align(Alignment.BottomCenter)
+            ) {
+                NowPlayingBar(
+                    playbackState = playbackState,
+                    onPlayPauseClick = { viewModel.togglePlayPause() },
+                    onPreviousClick = { viewModel.playPrevious() },
+                    onNextClick = { viewModel.playNext() },
+                    onClick = onNavigateToNowPlaying
+                )
+            }
         }
     }
 }
