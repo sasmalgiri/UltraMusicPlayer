@@ -104,6 +104,7 @@ enum class BattleFilter(val emoji: String, val label: String) {
     COUNTERS("⚔️", "Counter Songs")
 }
 
+@androidx.media3.common.util.UnstableApi
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BattleLibraryScreen(
@@ -115,13 +116,14 @@ fun BattleLibraryScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val playbackState by viewModel.playbackState.collectAsState()
+
+    val battleFavoriteSongIds by viewModel.battleFavoriteSongIds.collectAsState()
+    val recentBattleSongIds by viewModel.recentBattleSongIds.collectAsState()
+    val counterRecommendations by viewModel.counterRecommendations.collectAsState()
     
     var selectedFilter by remember { mutableStateOf(BattleFilter.ALL) }
     var searchQuery by remember { mutableStateOf("") }
     var showSearch by remember { mutableStateOf(false) }
-    
-    // Battle favorites (simulated - in production, store in preferences)
-    var battleFavorites by remember { mutableStateOf(setOf<Long>()) }
     
     // Categorize songs by energy
     val categorizedSongs by remember(uiState.songs) {
@@ -131,13 +133,22 @@ fun BattleLibraryScreen(
     }
     
     // Filtered songs based on selected filter
-    val filteredSongs by remember(uiState.songs, selectedFilter, searchQuery, battleFavorites) {
+    val filteredSongs by remember(
+        uiState.songs,
+        selectedFilter,
+        searchQuery,
+        battleFavoriteSongIds,
+        recentBattleSongIds,
+        counterRecommendations
+    ) {
         derivedStateOf {
             filterSongsForBattle(
                 songs = uiState.songs,
                 filter = selectedFilter,
                 searchQuery = searchQuery,
-                favorites = battleFavorites
+                favorites = battleFavoriteSongIds,
+                recentSongIds = recentBattleSongIds,
+                counterSongs = counterRecommendations.map { it.song }
             )
         }
     }
@@ -204,7 +215,7 @@ fun BattleLibraryScreen(
             item {
                 BattleStatsCard(
                     totalSongs = uiState.songs.size,
-                    favorites = battleFavorites.size,
+                    favorites = battleFavoriteSongIds.size,
                     highEnergy = categorizedSongs[EnergyCategory.HIGH]?.size ?: 0,
                     bassHeavy = categorizedSongs[EnergyCategory.BASS_HEAVY]?.size ?: 0
                 )
@@ -251,16 +262,16 @@ fun BattleLibraryScreen(
                             category = category,
                             songs = songs.take(5),
                             totalCount = songs.size,
-                            isFavorite = { battleFavorites.contains(it) },
-                            onToggleFavorite = { songId ->
-                                battleFavorites = if (battleFavorites.contains(songId)) {
-                                    battleFavorites - songId
-                                } else {
-                                    battleFavorites + songId
-                                }
+                            isFavorite = { battleFavoriteSongIds.contains(it) },
+                            onToggleFavorite = { songId -> viewModel.toggleBattleFavoriteSong(songId) },
+                            onPlaySong = {
+                                viewModel.recordRecentBattleSong(it.id)
+                                onPlaySong(it)
                             },
-                            onPlaySong = onPlaySong,
-                            onAddToQueue = onAddToQueue,
+                            onAddToQueue = {
+                                viewModel.recordRecentBattleSong(it.id)
+                                onAddToQueue(it)
+                            },
                             onShowAll = { selectedFilter = when(category) {
                                 EnergyCategory.HIGH -> BattleFilter.HIGH_ENERGY
                                 EnergyCategory.BASS_HEAVY -> BattleFilter.BASS_DROPS
@@ -296,17 +307,17 @@ fun BattleLibraryScreen(
                 items(filteredSongs) { song ->
                     BattleSongCard(
                         song = song,
-                        isFavorite = battleFavorites.contains(song.id),
+                        isFavorite = battleFavoriteSongIds.contains(song.id),
                         isPlaying = playbackState.currentSong?.id == song.id,
-                        onPlay = { onPlaySong(song) },
-                        onAddToQueue = { onAddToQueue(song) },
-                        onToggleFavorite = {
-                            battleFavorites = if (battleFavorites.contains(song.id)) {
-                                battleFavorites - song.id
-                            } else {
-                                battleFavorites + song.id
-                            }
-                        }
+                        onPlay = {
+                            viewModel.recordRecentBattleSong(song.id)
+                            onPlaySong(song)
+                        },
+                        onAddToQueue = {
+                            viewModel.recordRecentBattleSong(song.id)
+                            onAddToQueue(song)
+                        },
+                        onToggleFavorite = { viewModel.toggleBattleFavoriteSong(song.id) }
                     )
                 }
             }
@@ -720,35 +731,33 @@ private fun filterSongsForBattle(
     songs: List<Song>,
     filter: BattleFilter,
     searchQuery: String,
-    favorites: Set<Long>
+    favorites: Set<Long>,
+    recentSongIds: List<Long>,
+    counterSongs: List<Song>
 ): List<Song> {
-    var filtered = songs
-    
-    // Apply search
-    if (searchQuery.isNotBlank()) {
-        filtered = filtered.filter {
-            it.title.contains(searchQuery, ignoreCase = true) ||
-            it.artist.contains(searchQuery, ignoreCase = true)
+    val base = when (filter) {
+        BattleFilter.ALL -> songs
+        BattleFilter.FAVORITES -> songs.filter { favorites.contains(it.id) }
+        BattleFilter.RECENT -> {
+            if (recentSongIds.isEmpty()) {
+                songs.take(20)
+            } else {
+                val byId = songs.associateBy { it.id }
+                recentSongIds.mapNotNull { byId[it] }
+            }
         }
-    }
-    
-    // Apply filter
-    filtered = when (filter) {
-        BattleFilter.ALL -> filtered
-        BattleFilter.FAVORITES -> filtered.filter { favorites.contains(it.id) }
-        BattleFilter.RECENT -> filtered.take(20) // Placeholder - use actual history
-        BattleFilter.HIGH_ENERGY -> filtered.filter { song ->
+        BattleFilter.HIGH_ENERGY -> songs.filter { song ->
             val title = song.title.lowercase()
             title.contains("party") || title.contains("dance") ||
             title.contains("remix") || title.contains("edm") ||
             title.contains("hype") || title.contains("fire")
         }
-        BattleFilter.BASS_DROPS -> filtered.filter { song ->
+        BattleFilter.BASS_DROPS -> songs.filter { song ->
             val title = song.title.lowercase()
             title.contains("bass") || title.contains("drop") ||
             title.contains("boom") || title.contains("sub")
         }
-        BattleFilter.OPENERS -> filtered.sortedByDescending { 
+        BattleFilter.OPENERS -> songs.sortedByDescending { 
             // Sort by energy keywords
             val title = it.title.lowercase()
             when {
@@ -758,7 +767,7 @@ private fun filterSongsForBattle(
                 else -> 50
             }
         }.take(20)
-        BattleFilter.CLOSERS -> filtered.sortedByDescending {
+        BattleFilter.CLOSERS -> songs.sortedByDescending {
             val title = it.title.lowercase()
             when {
                 title.contains("finale") -> 100
@@ -767,8 +776,15 @@ private fun filterSongsForBattle(
                 else -> 50
             }
         }.take(20)
-        BattleFilter.COUNTERS -> filtered.shuffled().take(10) // AI suggestion placeholder
+        BattleFilter.COUNTERS -> {
+            val deduped = counterSongs.distinctBy { it.id }
+            if (deduped.isNotEmpty()) deduped else songs.shuffled().take(10)
+        }
     }
-    
-    return filtered
+
+    if (searchQuery.isBlank()) return base
+    return base.filter {
+        it.title.contains(searchQuery, ignoreCase = true) ||
+            it.artist.contains(searchQuery, ignoreCase = true)
+    }
 }

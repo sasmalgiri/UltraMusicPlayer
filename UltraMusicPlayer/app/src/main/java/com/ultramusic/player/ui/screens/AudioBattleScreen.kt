@@ -10,6 +10,7 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -2019,22 +2020,25 @@ private fun ProfileSlotButton(
     onLoad: () -> Unit,
     onClear: () -> Unit
 ) {
-    var lastClickTime by remember { mutableStateOf(0L) }
-
     Surface(
         modifier = Modifier
             .size(80.dp)
-            .clickable(enabled = enabled && profile != null) {
-                val currentTime = System.currentTimeMillis()
-                if (currentTime - lastClickTime < 300) {
-                    // Double tap - clear
-                    onClear()
-                } else {
-                    // Single tap - load
-                    onLoad()
+            .combinedClickable(
+                enabled = enabled,
+                onClick = {
+                    if (profile != null) {
+                        onLoad()
+                    }
+                },
+                onDoubleClick = {
+                    if (profile != null) {
+                        onClear()
+                    }
+                },
+                onLongClick = {
+                    onSave()
                 }
-                lastClickTime = currentTime
-            },
+            ),
         color = when {
             isActive -> color
             profile != null -> color.copy(alpha = 0.3f)

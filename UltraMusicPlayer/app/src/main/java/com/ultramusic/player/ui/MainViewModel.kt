@@ -127,6 +127,7 @@ class MainViewModel @Inject constructor(
     val localBattleAnalyzer: com.ultramusic.player.core.LocalBattleAnalyzer,
     val battleArmory: com.ultramusic.player.core.BattleArmory,
     val autoClipDetector: com.ultramusic.player.core.AutoClipDetector,
+    private val battleSongUserPrefs: com.ultramusic.player.core.BattleSongUserPrefs,
     val grokAIService: com.ultramusic.player.ai.GrokAIService,
     private val waveformExtractor: WaveformExtractor,
     private val beatDetector: BeatDetector
@@ -137,6 +138,19 @@ class MainViewModel @Inject constructor(
 
     val playbackState: StateFlow<PlaybackState> = musicController.playbackState
     val queue: StateFlow<List<Song>> = musicController.queue
+
+    // ==================== BATTLE LIBRARY USER DATA ====================
+
+    val battleFavoriteSongIds: StateFlow<Set<Long>> = battleSongUserPrefs.favoriteSongIds
+    val recentBattleSongIds: StateFlow<List<Long>> = battleSongUserPrefs.recentBattleSongIds
+
+    fun toggleBattleFavoriteSong(songId: Long) {
+        battleSongUserPrefs.toggleFavorite(songId)
+    }
+
+    fun recordRecentBattleSong(songId: Long) {
+        battleSongUserPrefs.recordRecent(songId)
+    }
 
     // ==================== PERMISSION & SCANNING STATE ====================
 
