@@ -18,7 +18,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Pause
@@ -28,6 +31,7 @@ import androidx.compose.material.icons.filled.RepeatOne
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material.icons.filled.Waves
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
@@ -43,6 +47,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -145,8 +150,9 @@ fun NowPlayingScreen(
     val reverbEnabled by viewModel.reverbEnabled.collectAsState()
     val reverbPreset by viewModel.reverbPreset.collectAsState()
 
-    // Waveform height state (adjustable 60-200 dp)
-    var waveformHeight by remember { mutableIntStateOf(100) }
+    // Waveform height state (adjustable 60-200 dp) and expanded state
+    var waveformHeight by remember { mutableIntStateOf(120) }
+    var isWaveformExpanded by remember { mutableStateOf(true) }
 
     val song = playbackState.currentSong
 
@@ -196,64 +202,34 @@ fun NowPlayingScreen(
                 )
             }
         ) { paddingValues ->
+            // ==================== ENTIRE SCREEN IS NOW SCROLLABLE ====================
+            val mainScrollState = rememberScrollState()
+
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(paddingValues)
+                    .verticalScroll(mainScrollState)
             ) {
-                // ==================== TOP SECTION: SCROLLABLE SMART PLAYLIST + FOLDERS ====================
-                val topSectionScrollState = rememberScrollState()
-
-                Column(
+                // ==================== TOP SECTION: SMART PLAYLIST (Collapsible) ====================
+                SmartPlaylistPanel(
+                    playlist = activePlaylist,
+                    searchState = playlistSearchState,
+                    isSearchMode = isPlaylistSearchMode,
+                    onPlaySong = { index -> viewModel.playFromPlaylistIndex(index) },
+                    onRemoveSong = { index -> viewModel.removeFromPlaylist(index) },
+                    onMoveSong = { from, to -> viewModel.moveInPlaylist(from, to) },
+                    onSearchQueryChange = { viewModel.updatePlaylistSearchQuery(it) },
+                    onAddFromSearch = { addedSong, playNext ->
+                        viewModel.addToPlaylistFromSearch(addedSong, playNext)
+                    },
+                    onToggleSearchMode = { viewModel.togglePlaylistAddingMode() },
+                    onToggleLoop = { viewModel.togglePlaylistLoop() },
+                    onShuffleRemaining = { viewModel.shufflePlaylistRemaining() },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(180.dp) // Fixed height for top section - scrollable internally
-                        .verticalScroll(topSectionScrollState)
-                ) {
-                    // Smart Playlist Panel (scrollable content)
-                    SmartPlaylistPanel(
-                        playlist = activePlaylist,
-                        searchState = playlistSearchState,
-                        isSearchMode = isPlaylistSearchMode,
-                        onPlaySong = { index -> viewModel.playFromPlaylistIndex(index) },
-                        onRemoveSong = { index -> viewModel.removeFromPlaylist(index) },
-                        onMoveSong = { from, to -> viewModel.moveInPlaylist(from, to) },
-                        onSearchQueryChange = { viewModel.updatePlaylistSearchQuery(it) },
-                        onAddFromSearch = { addedSong, playNext ->
-                            viewModel.addToPlaylistFromSearch(addedSong, playNext)
-                        },
-                        onToggleSearchMode = { viewModel.togglePlaylistAddingMode() },
-                        onToggleLoop = { viewModel.togglePlaylistLoop() },
-                        onShuffleRemaining = { viewModel.shufflePlaylistRemaining() },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(200.dp) // Fixed height for playlist
-                    )
-
-                    // Horizontal divider
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(1.dp)
-                            .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
-                    )
-
-                    // Folders Panel
-                    CompactFolderPanel(
-                        currentPath = currentFolderPath,
-                        breadcrumbs = breadcrumbs,
-                        browseItems = browseItems,
-                        currentSongId = song.id,
-                        onNavigateToPath = { path -> viewModel.navigateToPath(path) },
-                        onNavigateUp = { viewModel.navigateUp() },
-                        onPlaySong = { s -> viewModel.playSongFromFolder(s) },
-                        onPlayNext = { s -> viewModel.addToPlayNext(s) },
-                        onAddToEnd = { s -> viewModel.addToPlaylistEnd(s) },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(180.dp) // Fixed height for folders
-                    )
-                }
+                        .height(160.dp) // Compact height for playlist
+                )
 
                 // Horizontal divider
                 Box(
@@ -263,7 +239,31 @@ fun NowPlayingScreen(
                         .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
                 )
 
-                // ==================== MIDDLE SECTION: COMPACT NOW PLAYING WITH WAVEFORM ====================
+                // ==================== FOLDERS SECTION ====================
+                CompactFolderPanel(
+                    currentPath = currentFolderPath,
+                    breadcrumbs = breadcrumbs,
+                    browseItems = browseItems,
+                    currentSongId = song.id,
+                    onNavigateToPath = { path -> viewModel.navigateToPath(path) },
+                    onNavigateUp = { viewModel.navigateUp() },
+                    onPlaySong = { s -> viewModel.playSongFromFolder(s) },
+                    onPlayNext = { s -> viewModel.addToPlayNext(s) },
+                    onAddToEnd = { s -> viewModel.addToPlaylistEnd(s) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(160.dp) // Compact height for folders
+                )
+
+                // Horizontal divider
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(1.dp)
+                        .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
+                )
+
+                // ==================== NOW PLAYING SECTION WITH COLLAPSIBLE WAVEFORM ====================
                 CompactNowPlayingSection(
                     song = song,
                     isPlaying = playbackState.isPlaying,
@@ -282,7 +282,9 @@ fun NowPlayingScreen(
                     abLoopStart = playbackState.abLoopStart,
                     abLoopEnd = playbackState.abLoopEnd,
                     waveformHeight = waveformHeight,
+                    isWaveformExpanded = isWaveformExpanded,
                     onWaveformHeightChange = { newHeight -> waveformHeight = newHeight },
+                    onToggleWaveformExpanded = { isWaveformExpanded = !isWaveformExpanded },
                     onTogglePlayPause = { viewModel.togglePlayPause() },
                     onPrevious = { viewModel.playPrevious() },
                     onNext = { viewModel.playNext() },
@@ -292,161 +294,162 @@ fun NowPlayingScreen(
                     onLoopStartChange = { viewModel.setWaveformLoopStart(it) },
                     onLoopEndChange = { viewModel.setWaveformLoopEnd(it) },
                     onClearLoop = { viewModel.clearWaveformLoop() },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(0.35f) // 35% of screen for Now Playing with enhanced waveform
+                    modifier = Modifier.fillMaxWidth()
                 )
 
-                // ==================== BOTTOM SECTION: SCROLLABLE CONTROLS + BATTLE ====================
-                val scrollState = rememberScrollState()
-
-                Column(
+                // Horizontal divider
+                Box(
                     modifier = Modifier
-                        .weight(0.65f) // Remaining space for Controls (scrollable)
-                        .verticalScroll(scrollState)
-                ) {
-                    // Unified Controls Panel (Speed, Pitch, A-B Loop, Presets)
-                    UnifiedControlsPanel(
-                        // Speed & Pitch
-                        speed = playbackState.speed,
-                        pitch = playbackState.pitch,
-                        onSpeedChange = { viewModel.setSpeed(it) },
-                        onPitchChange = { viewModel.setPitch(it) },
-                        onResetSpeed = { viewModel.resetSpeed() },
-                        onResetPitch = { viewModel.resetPitch() },
-                        onResetAll = { viewModel.resetAll() },
-                        // A-B Loop
-                        abLoopStart = playbackState.abLoopStart,
-                        abLoopEnd = playbackState.abLoopEnd,
-                        currentPosition = playbackState.currentPosition,
-                        duration = playbackState.duration,
-                        onSetLoopStart = { viewModel.setABLoopStart() },
-                        onSetLoopEnd = { viewModel.setABLoopEnd() },
-                        onClearLoop = { viewModel.clearABLoop() },
-                        onSetManualLoopPoints = { startMs, endMs ->
-                            viewModel.setManualLoopPoints(startMs, endMs)
-                        },
-                        onSaveToArmory = {
-                            playbackState.currentSong?.let { currentSong ->
-                                val start = playbackState.abLoopStart ?: 0
-                                val end = playbackState.abLoopEnd ?: currentSong.duration
-                                viewModel.saveClipToArmory(currentSong, start, end)
-                            }
-                        },
-                        // Presets
-                        presets = AudioPreset.PRESETS,
-                        selectedPreset = uiState.selectedPreset,
-                        onPresetSelected = { viewModel.applyPreset(it) },
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                        .fillMaxWidth()
+                        .height(1.dp)
+                        .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
+                )
 
-                    // Divider before Battle Controls
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(1.dp)
-                            .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
+                // ==================== CONTROLS SECTION ====================
+                // Unified Controls Panel (Speed, Pitch, A-B Loop, Presets)
+                UnifiedControlsPanel(
+                    // Speed & Pitch
+                    speed = playbackState.speed,
+                    pitch = playbackState.pitch,
+                    onSpeedChange = { viewModel.setSpeed(it) },
+                    onPitchChange = { viewModel.setPitch(it) },
+                    onResetSpeed = { viewModel.resetSpeed() },
+                    onResetPitch = { viewModel.resetPitch() },
+                    onResetAll = { viewModel.resetAll() },
+                    // A-B Loop
+                    abLoopStart = playbackState.abLoopStart,
+                    abLoopEnd = playbackState.abLoopEnd,
+                    currentPosition = playbackState.currentPosition,
+                    duration = playbackState.duration,
+                    onSetLoopStart = { viewModel.setABLoopStart() },
+                    onSetLoopEnd = { viewModel.setABLoopEnd() },
+                    onClearLoop = { viewModel.clearABLoop() },
+                    onSetManualLoopPoints = { startMs, endMs ->
+                        viewModel.setManualLoopPoints(startMs, endMs)
+                    },
+                    onSaveToArmory = {
+                        playbackState.currentSong?.let { currentSong ->
+                            val start = playbackState.abLoopStart ?: 0
+                            val end = playbackState.abLoopEnd ?: currentSong.duration
+                            viewModel.saveClipToArmory(currentSong, start, end)
+                        }
+                    },
+                    // Presets
+                    presets = AudioPreset.PRESETS,
+                    selectedPreset = uiState.selectedPreset,
+                    onPresetSelected = { viewModel.applyPreset(it) },
+                    modifier = Modifier.fillMaxWidth()
+                )
 
-                    // Battle Controls Panel - FULL controls like AudioBattleScreen
-                    BattleControlsPanel(
-                        // Core state
-                        isEnabled = battleEngineEnabled,
-                        battleMode = battleMode,
-                        dangerModeEnabled = dangerModeEnabled,
-                        // SPL meters
-                        ourSPL = ourSPL,
-                        opponentSPL = opponentSPL,
-                        currentPeakDb = currentPeakDb,
-                        isClipping = isClipping,
-                        // Quick profiles
-                        profileSlotA = profileSlotA,
-                        profileSlotB = profileSlotB,
-                        profileSlotC = profileSlotC,
-                        activeProfileSlot = activeProfileSlot,
-                        // Main controls
-                        bassLevel = battleBassLevel,
-                        bassFrequency = bassFrequency,
-                        loudnessGain = battleLoudness,
-                        clarityLevel = battleClarity,
-                        spatialLevel = battleSpatial,
-                        eqBands = battleEQBands,
-                        // Compressor
-                        compressorEnabled = compressorEnabled,
-                        compressorThreshold = compressorThreshold,
-                        compressorRatio = compressorRatio,
-                        compressorAttack = compressorAttack,
-                        compressorRelease = compressorRelease,
-                        compressorMakeupGain = compressorMakeupGain,
-                        // Limiter
-                        limiterEnabled = limiterEnabled,
-                        limiterThreshold = limiterThreshold,
-                        limiterCeiling = limiterCeiling,
-                        limiterAttack = limiterAttack,
-                        limiterRelease = limiterRelease,
-                        // Stereo
-                        stereoWidthEnabled = stereoWidthEnabled,
-                        stereoWidth = stereoWidth,
-                        // Exciter
-                        exciterEnabled = exciterEnabled,
-                        exciterDrive = exciterDrive,
-                        exciterMix = exciterMix,
-                        // Reverb
-                        reverbEnabled = reverbEnabled,
-                        reverbPreset = reverbPreset,
-                        // Core callbacks
-                        onToggleBattleEngine = { viewModel.toggleBattleEngine() },
-                        onBattleModeChange = { viewModel.setBattleMode(it) },
-                        onDangerModeChange = { viewModel.setDangerModeEnabled(it) },
-                        onEmergencyBass = { viewModel.emergencyBassBoost() },
-                        onCutThrough = { viewModel.cutThrough() },
-                        onGoNuclear = { viewModel.goNuclear() },
-                        onSaveProfileSlot = { viewModel.saveToProfileSlot(it) },
-                        onLoadProfileSlot = { viewModel.loadFromProfileSlot(it) },
-                        onClearProfileSlot = { viewModel.clearProfileSlot(it) },
-                        onResetAll = { viewModel.resetAllAudioEffects() },
-                        // Main control callbacks
-                        onBassChange = { viewModel.setBattleBass(it) },
-                        onBassFrequencyChange = { viewModel.setBassFrequency(it) },
-                        onLoudnessChange = { viewModel.setBattleLoudness(it) },
-                        onClarityChange = { viewModel.setBattleClarity(it) },
-                        onSpatialChange = { viewModel.setBattleSpatial(it) },
-                        onEQBandChange = { bandIndex, level -> viewModel.setBattleEQBand(bandIndex, level) },
-                        // Compressor callbacks
-                        onCompressorEnabledChange = { viewModel.setCompressorEnabled(it) },
-                        onCompressorThresholdChange = { viewModel.setCompressorThreshold(it) },
-                        onCompressorRatioChange = { viewModel.setCompressorRatio(it) },
-                        onCompressorAttackChange = { viewModel.setCompressorAttack(it) },
-                        onCompressorReleaseChange = { viewModel.setCompressorRelease(it) },
-                        onCompressorMakeupGainChange = { viewModel.setCompressorMakeupGain(it) },
-                        // Limiter callbacks
-                        onLimiterEnabledChange = { viewModel.setLimiterEnabled(it) },
-                        onLimiterThresholdChange = { viewModel.setLimiterThreshold(it) },
-                        onLimiterCeilingChange = { viewModel.setLimiterCeiling(it) },
-                        onLimiterAttackChange = { viewModel.setLimiterAttack(it) },
-                        onLimiterReleaseChange = { viewModel.setLimiterRelease(it) },
-                        // Stereo callbacks
-                        onStereoEnabledChange = { viewModel.setStereoWidthEnabled(it) },
-                        onStereoWidthChange = { viewModel.setStereoWidth(it) },
-                        // Exciter callbacks
-                        onExciterEnabledChange = { viewModel.setExciterEnabled(it) },
-                        onExciterDriveChange = { viewModel.setExciterDrive(it) },
-                        onExciterMixChange = { viewModel.setExciterMix(it) },
-                        // Reverb callbacks
-                        onReverbEnabledChange = { viewModel.setReverbEnabled(it) },
-                        onReverbPresetChange = { viewModel.setReverbPreset(it) },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
+                // Divider before Battle Controls
+                Spacer(modifier = Modifier.height(8.dp))
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(1.dp)
+                        .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Battle Controls Panel - FULL controls like AudioBattleScreen
+                BattleControlsPanel(
+                    // Core state
+                    isEnabled = battleEngineEnabled,
+                    battleMode = battleMode,
+                    dangerModeEnabled = dangerModeEnabled,
+                    // SPL meters
+                    ourSPL = ourSPL,
+                    opponentSPL = opponentSPL,
+                    currentPeakDb = currentPeakDb,
+                    isClipping = isClipping,
+                    // Quick profiles
+                    profileSlotA = profileSlotA,
+                    profileSlotB = profileSlotB,
+                    profileSlotC = profileSlotC,
+                    activeProfileSlot = activeProfileSlot,
+                    // Main controls
+                    bassLevel = battleBassLevel,
+                    bassFrequency = bassFrequency,
+                    loudnessGain = battleLoudness,
+                    clarityLevel = battleClarity,
+                    spatialLevel = battleSpatial,
+                    eqBands = battleEQBands,
+                    // Compressor
+                    compressorEnabled = compressorEnabled,
+                    compressorThreshold = compressorThreshold,
+                    compressorRatio = compressorRatio,
+                    compressorAttack = compressorAttack,
+                    compressorRelease = compressorRelease,
+                    compressorMakeupGain = compressorMakeupGain,
+                    // Limiter
+                    limiterEnabled = limiterEnabled,
+                    limiterThreshold = limiterThreshold,
+                    limiterCeiling = limiterCeiling,
+                    limiterAttack = limiterAttack,
+                    limiterRelease = limiterRelease,
+                    // Stereo
+                    stereoWidthEnabled = stereoWidthEnabled,
+                    stereoWidth = stereoWidth,
+                    // Exciter
+                    exciterEnabled = exciterEnabled,
+                    exciterDrive = exciterDrive,
+                    exciterMix = exciterMix,
+                    // Reverb
+                    reverbEnabled = reverbEnabled,
+                    reverbPreset = reverbPreset,
+                    // Core callbacks
+                    onToggleBattleEngine = { viewModel.toggleBattleEngine() },
+                    onBattleModeChange = { viewModel.setBattleMode(it) },
+                    onDangerModeChange = { viewModel.setDangerModeEnabled(it) },
+                    onEmergencyBass = { viewModel.emergencyBassBoost() },
+                    onCutThrough = { viewModel.cutThrough() },
+                    onGoNuclear = { viewModel.goNuclear() },
+                    onSaveProfileSlot = { viewModel.saveToProfileSlot(it) },
+                    onLoadProfileSlot = { viewModel.loadFromProfileSlot(it) },
+                    onClearProfileSlot = { viewModel.clearProfileSlot(it) },
+                    onResetAll = { viewModel.resetAllAudioEffects() },
+                    // Main control callbacks
+                    onBassChange = { viewModel.setBattleBass(it) },
+                    onBassFrequencyChange = { viewModel.setBassFrequency(it) },
+                    onLoudnessChange = { viewModel.setBattleLoudness(it) },
+                    onClarityChange = { viewModel.setBattleClarity(it) },
+                    onSpatialChange = { viewModel.setBattleSpatial(it) },
+                    onEQBandChange = { bandIndex, level -> viewModel.setBattleEQBand(bandIndex, level) },
+                    // Compressor callbacks
+                    onCompressorEnabledChange = { viewModel.setCompressorEnabled(it) },
+                    onCompressorThresholdChange = { viewModel.setCompressorThreshold(it) },
+                    onCompressorRatioChange = { viewModel.setCompressorRatio(it) },
+                    onCompressorAttackChange = { viewModel.setCompressorAttack(it) },
+                    onCompressorReleaseChange = { viewModel.setCompressorRelease(it) },
+                    onCompressorMakeupGainChange = { viewModel.setCompressorMakeupGain(it) },
+                    // Limiter callbacks
+                    onLimiterEnabledChange = { viewModel.setLimiterEnabled(it) },
+                    onLimiterThresholdChange = { viewModel.setLimiterThreshold(it) },
+                    onLimiterCeilingChange = { viewModel.setLimiterCeiling(it) },
+                    onLimiterAttackChange = { viewModel.setLimiterAttack(it) },
+                    onLimiterReleaseChange = { viewModel.setLimiterRelease(it) },
+                    // Stereo callbacks
+                    onStereoEnabledChange = { viewModel.setStereoWidthEnabled(it) },
+                    onStereoWidthChange = { viewModel.setStereoWidth(it) },
+                    // Exciter callbacks
+                    onExciterEnabledChange = { viewModel.setExciterEnabled(it) },
+                    onExciterDriveChange = { viewModel.setExciterDrive(it) },
+                    onExciterMixChange = { viewModel.setExciterMix(it) },
+                    // Reverb callbacks
+                    onReverbEnabledChange = { viewModel.setReverbEnabled(it) },
+                    onReverbPresetChange = { viewModel.setReverbPreset(it) },
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                // Bottom spacing
+                Spacer(modifier = Modifier.height(16.dp))
             }
         }
     }
 }
 
 /**
- * Compact Now Playing section with horizontal layout
+ * Compact Now Playing section with horizontal layout and collapsible waveform
  */
 @Composable
 private fun CompactNowPlayingSection(
@@ -467,7 +470,9 @@ private fun CompactNowPlayingSection(
     abLoopStart: Long?,
     abLoopEnd: Long?,
     waveformHeight: Int,
+    isWaveformExpanded: Boolean,
     onWaveformHeightChange: (Int) -> Unit,
+    onToggleWaveformExpanded: () -> Unit,
     onTogglePlayPause: () -> Unit,
     onPrevious: () -> Unit,
     onNext: () -> Unit,
@@ -479,12 +484,9 @@ private fun CompactNowPlayingSection(
     onClearLoop: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val scrollState = rememberScrollState()
-
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .verticalScroll(scrollState)
             .padding(horizontal = 12.dp, vertical = 8.dp)
     ) {
         // Top row: Album art + Song info + Controls
@@ -653,43 +655,107 @@ private fun CompactNowPlayingSection(
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        // Battle-style Waveform Visualizer with A-B Loop, Zoom, Beat Markers
-        if (isExtractingWaveform) {
+        // ==================== COLLAPSIBLE WAVEFORM SECTION ====================
+        // Waveform header with expand/collapse toggle
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(8.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                .clickable { onToggleWaveformExpanded() }
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                androidx.compose.material3.CircularProgressIndicator(
-                    modifier = Modifier.size(16.dp),
-                    strokeWidth = 2.dp
+                Icon(
+                    imageVector = Icons.Default.Waves,
+                    contentDescription = "Waveform",
+                    modifier = Modifier.size(20.dp),
+                    tint = MaterialTheme.colorScheme.primary
                 )
-                Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "Analyzing waveform...",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    text = "Waveform",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                if (isExtractingWaveform) {
+                    androidx.compose.material3.CircularProgressIndicator(
+                        modifier = Modifier.size(14.dp),
+                        strokeWidth = 2.dp
+                    )
+                }
+                if (abLoopStart != null && abLoopEnd != null) {
+                    Text(
+                        text = "A-B",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color(0xFFFF9800),
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                // Height adjustment buttons (only when expanded)
+                if (isWaveformExpanded) {
+                    Text(
+                        text = "${waveformHeight}dp",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    IconButton(
+                        onClick = { onWaveformHeightChange((waveformHeight - 20).coerceAtLeast(60)) },
+                        modifier = Modifier.size(24.dp)
+                    ) {
+                        Text("-", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+                    }
+                    IconButton(
+                        onClick = { onWaveformHeightChange((waveformHeight + 20).coerceAtMost(200)) },
+                        modifier = Modifier.size(24.dp)
+                    ) {
+                        Text("+", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+                    }
+                }
+
+                // Expand/Collapse icon
+                Icon(
+                    imageVector = if (isWaveformExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                    contentDescription = if (isWaveformExpanded) "Collapse" else "Expand",
+                    modifier = Modifier.size(24.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
 
-        // Enhanced Waveform Visualizer (like Battle Screen)
-        WaveformVisualizer(
-            waveformData = waveformData,
-            currentPosition = progress,
-            durationMs = duration,
-            loopStartMs = abLoopStart,
-            loopEndMs = abLoopEnd,
-            isLooping = abLoopStart != null && abLoopEnd != null,
-            onSeek = onSeekToPercent,
-            onLoopStartChange = onLoopStartChange,
-            onLoopEndChange = onLoopEndChange,
-            onClearLoop = onClearLoop,
-            beatMarkers = beatMarkers,
-            estimatedBpm = estimatedBpm ?: 0f,
-            showBeatMarkers = true,
-            modifier = Modifier.fillMaxWidth(),
-            height = waveformHeight.dp
-        )
+        // Waveform content (only shown when expanded)
+        if (isWaveformExpanded) {
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Enhanced Waveform Visualizer (like Battle Screen)
+            WaveformVisualizer(
+                waveformData = waveformData,
+                currentPosition = progress,
+                durationMs = duration,
+                loopStartMs = abLoopStart,
+                loopEndMs = abLoopEnd,
+                isLooping = abLoopStart != null && abLoopEnd != null,
+                onSeek = onSeekToPercent,
+                onLoopStartChange = onLoopStartChange,
+                onLoopEndChange = onLoopEndChange,
+                onClearLoop = onClearLoop,
+                beatMarkers = beatMarkers,
+                estimatedBpm = estimatedBpm ?: 0f,
+                showBeatMarkers = true,
+                modifier = Modifier.fillMaxWidth(),
+                height = waveformHeight.dp
+            )
+        }
     }
 }
