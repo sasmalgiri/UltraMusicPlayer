@@ -29,6 +29,8 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DragHandle
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.PlayArrow
@@ -95,6 +97,8 @@ fun SmartPlaylistPanel(
     playlist: ActivePlaylist,
     searchState: PlaylistSearchState,
     isSearchMode: Boolean,
+    isMinimized: Boolean,
+    onToggleMinimize: () -> Unit,
     onPlaySong: (Int) -> Unit,
     onRemoveSong: (Int) -> Unit,
     onMoveSong: (from: Int, to: Int) -> Unit,
@@ -103,6 +107,7 @@ fun SmartPlaylistPanel(
     onToggleSearchMode: () -> Unit,
     onToggleLoop: () -> Unit,
     onShuffleRemaining: () -> Unit,
+    showMinimizeToggle: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -114,41 +119,50 @@ fun SmartPlaylistPanel(
         SmartPlaylistHeader(
             songCount = playlist.size,
             isLooping = playlist.isLooping,
+            isMinimized = isMinimized,
             onAddClick = onToggleSearchMode,
             onShuffleClick = onShuffleRemaining,
-            onLoopClick = onToggleLoop
+            onLoopClick = onToggleLoop,
+            onToggleMinimize = onToggleMinimize,
+            showMinimizeToggle = showMinimizeToggle
         )
 
-        // Search mode or playlist view
-        if (isSearchMode) {
-            // Search overlay
-            SearchModeContent(
-                searchState = searchState,
-                onQueryChange = onSearchQueryChange,
-                onAddSong = onAddFromSearch,
-                onClose = onToggleSearchMode,
-                modifier = Modifier.weight(1f)
-            )
-        } else {
-            // Playlist content
-            if (playlist.isEmpty) {
-                EmptyPlaylistContent(
-                    onAddClick = onToggleSearchMode,
+        AnimatedVisibility(
+            visible = !isMinimized,
+            enter = fadeIn() + expandVertically(),
+            exit = fadeOut() + shrinkVertically()
+        ) {
+            // Search mode or playlist view
+            if (isSearchMode) {
+                // Search overlay
+                SearchModeContent(
+                    searchState = searchState,
+                    onQueryChange = onSearchQueryChange,
+                    onAddSong = onAddFromSearch,
+                    onClose = onToggleSearchMode,
                     modifier = Modifier.weight(1f)
                 )
             } else {
-                PlaylistContent(
-                    playlist = playlist,
-                    onPlaySong = onPlaySong,
-                    onRemoveSong = onRemoveSong,
-                    modifier = Modifier.weight(1f)
+                // Playlist content
+                if (playlist.isEmpty) {
+                    EmptyPlaylistContent(
+                        onAddClick = onToggleSearchMode,
+                        modifier = Modifier.weight(1f)
+                    )
+                } else {
+                    PlaylistContent(
+                        playlist = playlist,
+                        onPlaySong = onPlaySong,
+                        onRemoveSong = onRemoveSong,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
+                // Bottom search bar (when not in search mode)
+                QuickSearchBar(
+                    onClick = onToggleSearchMode
                 )
             }
-
-            // Bottom search bar (when not in search mode)
-            QuickSearchBar(
-                onClick = onToggleSearchMode
-            )
         }
     }
 }
@@ -157,9 +171,12 @@ fun SmartPlaylistPanel(
 private fun SmartPlaylistHeader(
     songCount: Int,
     isLooping: Boolean,
+    isMinimized: Boolean,
     onAddClick: () -> Unit,
     onShuffleClick: () -> Unit,
-    onLoopClick: () -> Unit
+    onLoopClick: () -> Unit,
+    onToggleMinimize: () -> Unit,
+    showMinimizeToggle: Boolean
 ) {
     Row(
         modifier = Modifier
@@ -236,6 +253,20 @@ private fun SmartPlaylistHeader(
                            else MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(16.dp)
                 )
+            }
+
+            if (showMinimizeToggle) {
+                IconButton(
+                    onClick = onToggleMinimize,
+                    modifier = Modifier.size(28.dp)
+                ) {
+                    Icon(
+                        imageVector = if (isMinimized) Icons.Default.ExpandMore else Icons.Default.ExpandLess,
+                        contentDescription = if (isMinimized) "Expand playlist" else "Minimize playlist",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
             }
         }
     }

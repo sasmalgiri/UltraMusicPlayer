@@ -49,6 +49,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -154,6 +155,9 @@ fun NowPlayingScreen(
     var waveformHeight by remember { mutableIntStateOf(120) }
     var isWaveformExpanded by remember { mutableStateOf(true) }
 
+    var isPlaylistMinimized by rememberSaveable { mutableStateOf(false) }
+    var isFolderMinimized by rememberSaveable { mutableStateOf(false) }
+
     val song = playbackState.currentSong
 
     if (song == null) {
@@ -164,6 +168,13 @@ fun NowPlayingScreen(
     // Analyze song for waveform and beats when song changes
     LaunchedEffect(song.id) {
         viewModel.analyzeCurrentSong()
+    }
+
+    // If user enters playlist search mode, ensure playlist panel is visible.
+    LaunchedEffect(isPlaylistSearchMode) {
+        if (isPlaylistSearchMode) {
+            isPlaylistMinimized = false
+        }
     }
 
     Box(
@@ -205,55 +216,63 @@ fun NowPlayingScreen(
             // ==================== ENTIRE SCREEN IS NOW SCROLLABLE ====================
             val mainScrollState = rememberScrollState()
 
-            Column(
+            Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(paddingValues)
-                    .verticalScroll(mainScrollState)
             ) {
-                // ==================== TOP SECTION: SMART PLAYLIST (Collapsible) ====================
-                SmartPlaylistPanel(
-                    playlist = activePlaylist,
-                    searchState = playlistSearchState,
-                    isSearchMode = isPlaylistSearchMode,
-                    onPlaySong = { index -> viewModel.playFromPlaylistIndex(index) },
-                    onRemoveSong = { index -> viewModel.removeFromPlaylist(index) },
-                    onMoveSong = { from, to -> viewModel.moveInPlaylist(from, to) },
-                    onSearchQueryChange = { viewModel.updatePlaylistSearchQuery(it) },
-                    onAddFromSearch = { addedSong, playNext ->
-                        viewModel.addToPlaylistFromSearch(addedSong, playNext)
-                    },
-                    onToggleSearchMode = { viewModel.togglePlaylistAddingMode() },
-                    onToggleLoop = { viewModel.togglePlaylistLoop() },
-                    onShuffleRemaining = { viewModel.shufflePlaylistRemaining() },
+                Column(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .height(160.dp) // Compact height for playlist
-                )
+                        .fillMaxSize()
+                        .verticalScroll(mainScrollState)
+                ) {
+                    // ==================== TOP SECTION: SMART PLAYLIST (Collapsible) ====================
+                    SmartPlaylistPanel(
+                        playlist = activePlaylist,
+                        searchState = playlistSearchState,
+                        isSearchMode = isPlaylistSearchMode,
+                        isMinimized = isPlaylistMinimized,
+                        onToggleMinimize = { isPlaylistMinimized = !isPlaylistMinimized },
+                        onPlaySong = { index -> viewModel.playFromPlaylistIndex(index) },
+                        onRemoveSong = { index -> viewModel.removeFromPlaylist(index) },
+                        onMoveSong = { from, to -> viewModel.moveInPlaylist(from, to) },
+                        onSearchQueryChange = { viewModel.updatePlaylistSearchQuery(it) },
+                        onAddFromSearch = { addedSong, playNext ->
+                            viewModel.addToPlaylistFromSearch(addedSong, playNext)
+                        },
+                        onToggleSearchMode = { viewModel.togglePlaylistAddingMode() },
+                        onToggleLoop = { viewModel.togglePlaylistLoop() },
+                        onShuffleRemaining = { viewModel.shufflePlaylistRemaining() },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(if (isPlaylistMinimized) 56.dp else 280.dp)
+                    )
 
-                // Horizontal divider
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(1.dp)
-                        .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
-                )
+                    // Horizontal divider
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(1.dp)
+                            .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
+                    )
 
-                // ==================== FOLDERS SECTION ====================
-                CompactFolderPanel(
-                    currentPath = currentFolderPath,
-                    breadcrumbs = breadcrumbs,
-                    browseItems = browseItems,
-                    currentSongId = song.id,
-                    onNavigateToPath = { path -> viewModel.navigateToPath(path) },
-                    onNavigateUp = { viewModel.navigateUp() },
-                    onPlaySong = { s -> viewModel.playSongFromFolder(s) },
-                    onPlayNext = { s -> viewModel.addToPlayNext(s) },
-                    onAddToEnd = { s -> viewModel.addToPlaylistEnd(s) },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(160.dp) // Compact height for folders
-                )
+                    // ==================== FOLDERS SECTION ====================
+                    CompactFolderPanel(
+                        currentPath = currentFolderPath,
+                        breadcrumbs = breadcrumbs,
+                        browseItems = browseItems,
+                        currentSongId = song.id,
+                        isMinimized = isFolderMinimized,
+                        onToggleMinimize = { isFolderMinimized = !isFolderMinimized },
+                        onNavigateToPath = { path -> viewModel.navigateToPath(path) },
+                        onNavigateUp = { viewModel.navigateUp() },
+                        onPlaySong = { s -> viewModel.playSongFromFolder(s) },
+                        onPlayNext = { s -> viewModel.addToPlayNext(s) },
+                        onAddToEnd = { s -> viewModel.addToPlaylistEnd(s) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(if (isFolderMinimized) 56.dp else 300.dp)
+                    )
 
                 // Horizontal divider
                 Box(
@@ -444,8 +463,33 @@ fun NowPlayingScreen(
                 // Bottom spacing
                 Spacer(modifier = Modifier.height(16.dp))
             }
+
+            // Full-screen playlist add/search overlay when the user taps the (+) button.
+            if (isPlaylistSearchMode) {
+                SmartPlaylistPanel(
+                    playlist = activePlaylist,
+                    searchState = playlistSearchState,
+                    isSearchMode = true,
+                    isMinimized = false,
+                    onToggleMinimize = {},
+                    onPlaySong = { index -> viewModel.playFromPlaylistIndex(index) },
+                    onRemoveSong = { index -> viewModel.removeFromPlaylist(index) },
+                    onMoveSong = { from, to -> viewModel.moveInPlaylist(from, to) },
+                    onSearchQueryChange = { viewModel.updatePlaylistSearchQuery(it) },
+                    onAddFromSearch = { addedSong, playNext ->
+                        viewModel.addToPlaylistFromSearch(addedSong, playNext)
+                    },
+                    onToggleSearchMode = { viewModel.togglePlaylistAddingMode() },
+                    onToggleLoop = { viewModel.togglePlaylistLoop() },
+                    onShuffleRemaining = { viewModel.shufflePlaylistRemaining() },
+                    showMinimizeToggle = false,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
         }
     }
+}
+
 }
 
 /**

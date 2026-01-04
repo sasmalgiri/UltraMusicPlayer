@@ -1,5 +1,10 @@
 package com.ultramusic.player.ui.components
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -20,6 +25,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Home
@@ -57,6 +64,8 @@ fun CompactFolderPanel(
     breadcrumbs: List<Pair<String, String>>,
     browseItems: List<BrowseItem>,
     currentSongId: Long?,
+    isMinimized: Boolean,
+    onToggleMinimize: () -> Unit,
     onNavigateToPath: (String) -> Unit,
     onNavigateUp: () -> Unit,
     onPlaySong: (Song) -> Unit,
@@ -103,100 +112,121 @@ fun CompactFolderPanel(
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold
             )
+
+            Spacer(modifier = Modifier.weight(1f))
+
+            IconButton(
+                onClick = onToggleMinimize,
+                modifier = Modifier.size(32.dp)
+            ) {
+                Icon(
+                    imageVector = if (isMinimized) Icons.Default.ExpandMore else Icons.Default.ExpandLess,
+                    contentDescription = if (isMinimized) "Expand folders" else "Minimize folders",
+                    modifier = Modifier.size(20.dp)
+                )
+            }
         }
 
-        // Breadcrumb navigation
-        if (breadcrumbs.size > 1) {
-            LazyRow(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                items(breadcrumbs) { (name, path) ->
-                    Surface(
-                        onClick = { onNavigateToPath(path) },
-                        color = if (path == currentPath)
-                            MaterialTheme.colorScheme.primaryContainer
-                        else
-                            MaterialTheme.colorScheme.surfaceVariant,
-                        shape = RoundedCornerShape(4.dp)
+        AnimatedVisibility(
+            visible = !isMinimized,
+            enter = fadeIn() + expandVertically(),
+            exit = fadeOut() + shrinkVertically()
+        ) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                // Breadcrumb navigation
+                if (breadcrumbs.size > 1) {
+                    LazyRow(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            if (path.isEmpty()) {
-                                Icon(
-                                    imageVector = Icons.Default.Home,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(12.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
+                        items(breadcrumbs) { (name, path) ->
+                            Surface(
+                                onClick = { onNavigateToPath(path) },
+                                color = if (path == currentPath)
+                                    MaterialTheme.colorScheme.primaryContainer
+                                else
+                                    MaterialTheme.colorScheme.surfaceVariant,
+                                shape = RoundedCornerShape(4.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    if (path.isEmpty()) {
+                                        Icon(
+                                            imageVector = Icons.Default.Home,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(12.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                    }
+                                    Text(
+                                        text = name,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontSize = 10.sp
+                                    )
+                                }
                             }
-                            Text(
-                                text = name,
-                                style = MaterialTheme.typography.labelSmall,
-                                fontSize = 10.sp
-                            )
+                            if (path != currentPath) {
+                                Text(
+                                    text = "/",
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontSize = 10.sp
+                                )
+                            }
                         }
                     }
-                    if (path != currentPath) {
-                        Text(
-                            text = "/",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontSize = 10.sp
-                        )
-                    }
+                    Spacer(modifier = Modifier.height(4.dp))
                 }
-            }
-            Spacer(modifier = Modifier.height(4.dp))
-        }
 
-        // Browse items list
-        if (browseItems.isEmpty()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(16.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(
-                        imageVector = Icons.Default.Folder,
-                        contentDescription = null,
-                        modifier = Modifier.size(48.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "Empty folder",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-        } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize()
-            ) {
-                items(browseItems) { item ->
-                    when (item) {
-                        is BrowseItem.Folder -> {
-                            FolderBrowseItem(
-                                folderPath = item.folder.path,
-                                folderName = item.folder.name.ifEmpty { item.folder.path.substringAfterLast("/") },
-                                onClick = { onNavigateToPath(item.folder.path) }
+                // Browse items list
+                if (browseItems.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(16.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(
+                                imageVector = Icons.Default.Folder,
+                                contentDescription = null,
+                                modifier = Modifier.size(48.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = "Empty folder",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
-                        is BrowseItem.SongItem -> {
-                            SongBrowseItem(
-                                song = item.song,
-                                isPlaying = item.song.id == currentSongId,
-                                onPlay = { onPlaySong(item.song) },
-                                onPlayNext = { onPlayNext(item.song) },
-                                onAddToEnd = { onAddToEnd(item.song) }
-                            )
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        items(browseItems) { item ->
+                            when (item) {
+                                is BrowseItem.Folder -> {
+                                    FolderBrowseItem(
+                                        folderPath = item.folder.path,
+                                        folderName = item.folder.name.ifEmpty { item.folder.path.substringAfterLast("/") },
+                                        onClick = { onNavigateToPath(item.folder.path) }
+                                    )
+                                }
+                                is BrowseItem.SongItem -> {
+                                    SongBrowseItem(
+                                        song = item.song,
+                                        isPlaying = item.song.id == currentSongId,
+                                        onPlay = { onPlaySong(item.song) },
+                                        onPlayNext = { onPlayNext(item.song) },
+                                        onAddToEnd = { onAddToEnd(item.song) }
+                                    )
+                                }
+                            }
                         }
                     }
                 }
