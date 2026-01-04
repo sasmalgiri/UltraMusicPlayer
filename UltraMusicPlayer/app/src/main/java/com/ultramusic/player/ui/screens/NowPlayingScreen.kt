@@ -64,7 +64,7 @@ import com.ultramusic.player.ui.components.BattleControlsPanel
 import com.ultramusic.player.ui.components.CompactFolderPanel
 import com.ultramusic.player.ui.components.SmartPlaylistPanel
 import com.ultramusic.player.ui.components.UnifiedControlsPanel
-import com.ultramusic.player.ui.components.MusicSpeedChangerWaveform
+import com.ultramusic.player.ui.components.WaveformVisualizer
 import com.ultramusic.player.ui.theme.UltraGradientEnd
 import com.ultramusic.player.ui.theme.UltraGradientStart
 
@@ -201,13 +201,16 @@ fun NowPlayingScreen(
                     .fillMaxSize()
                     .padding(paddingValues)
             ) {
-                // ==================== TOP SECTION: SMART PLAYLIST + FOLDERS STACKED ====================
+                // ==================== TOP SECTION: SCROLLABLE SMART PLAYLIST + FOLDERS ====================
+                val topSectionScrollState = rememberScrollState()
+
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .weight(0.45f) // 45% of screen for Playlist+Folders
+                        .height(180.dp) // Fixed height for top section - scrollable internally
+                        .verticalScroll(topSectionScrollState)
                 ) {
-                    // Smart Playlist Panel (top)
+                    // Smart Playlist Panel (scrollable content)
                     SmartPlaylistPanel(
                         playlist = activePlaylist,
                         searchState = playlistSearchState,
@@ -224,7 +227,7 @@ fun NowPlayingScreen(
                         onShuffleRemaining = { viewModel.shufflePlaylistRemaining() },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .weight(0.52f)
+                            .height(200.dp) // Fixed height for playlist
                     )
 
                     // Horizontal divider
@@ -235,7 +238,7 @@ fun NowPlayingScreen(
                             .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
                     )
 
-                    // Folders Panel (bottom)
+                    // Folders Panel
                     CompactFolderPanel(
                         currentPath = currentFolderPath,
                         breadcrumbs = breadcrumbs,
@@ -248,7 +251,7 @@ fun NowPlayingScreen(
                         onAddToEnd = { s -> viewModel.addToPlaylistEnd(s) },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .weight(0.48f)
+                            .height(180.dp) // Fixed height for folders
                     )
                 }
 
@@ -260,7 +263,7 @@ fun NowPlayingScreen(
                         .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
                 )
 
-                // ==================== MIDDLE SECTION: COMPACT NOW PLAYING ====================
+                // ==================== MIDDLE SECTION: COMPACT NOW PLAYING WITH WAVEFORM ====================
                 CompactNowPlayingSection(
                     song = song,
                     isPlaying = playbackState.isPlaying,
@@ -291,7 +294,7 @@ fun NowPlayingScreen(
                     onClearLoop = { viewModel.clearWaveformLoop() },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .weight(0.25f) // 25% of screen for Now Playing
+                        .weight(0.35f) // 35% of screen for Now Playing with enhanced waveform
                 )
 
                 // ==================== BOTTOM SECTION: SCROLLABLE CONTROLS + BATTLE ====================
@@ -299,7 +302,7 @@ fun NowPlayingScreen(
 
                 Column(
                     modifier = Modifier
-                        .weight(0.30f) // 30% of screen for Controls
+                        .weight(0.65f) // Remaining space for Controls (scrollable)
                         .verticalScroll(scrollState)
                 ) {
                     // Unified Controls Panel (Speed, Pitch, A-B Loop, Presets)
@@ -650,57 +653,41 @@ private fun CompactNowPlayingSection(
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        // Music Speed Changer style waveform with height adjustment
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.End,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            if (isExtractingWaveform) {
+        // Battle-style Waveform Visualizer with A-B Loop, Zoom, Beat Markers
+        if (isExtractingWaveform) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 androidx.compose.material3.CircularProgressIndicator(
-                    modifier = Modifier.size(12.dp),
+                    modifier = Modifier.size(16.dp),
                     strokeWidth = 2.dp
                 )
-                Spacer(modifier = Modifier.width(4.dp))
-            }
-            Text(
-                text = "Height",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Spacer(modifier = Modifier.width(4.dp))
-            IconButton(
-                onClick = { onWaveformHeightChange((waveformHeight - 20).coerceAtLeast(60)) },
-                modifier = Modifier.size(24.dp)
-            ) {
-                Text("-", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
-            }
-            Text(
-                text = "${waveformHeight}",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.width(28.dp),
-                textAlign = TextAlign.Center
-            )
-            IconButton(
-                onClick = { onWaveformHeightChange((waveformHeight + 20).coerceAtMost(200)) },
-                modifier = Modifier.size(24.dp)
-            ) {
-                Text("+", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Analyzing waveform...",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
 
-        // Music Speed Changer style waveform
-        MusicSpeedChangerWaveform(
+        // Enhanced Waveform Visualizer (like Battle Screen)
+        WaveformVisualizer(
             waveformData = waveformData,
             currentPosition = progress,
             durationMs = duration,
             loopStartMs = abLoopStart,
             loopEndMs = abLoopEnd,
+            isLooping = abLoopStart != null && abLoopEnd != null,
             onSeek = onSeekToPercent,
             onLoopStartChange = onLoopStartChange,
             onLoopEndChange = onLoopEndChange,
             onClearLoop = onClearLoop,
+            beatMarkers = beatMarkers,
+            estimatedBpm = estimatedBpm ?: 0f,
+            showBeatMarkers = true,
             modifier = Modifier.fillMaxWidth(),
             height = waveformHeight.dp
         )
